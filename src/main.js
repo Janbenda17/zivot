@@ -6,7 +6,9 @@ import { useRoute, go, takePayload } from './nav.js';
 import { TodayPage } from './today.js';
 import { TimerPage, useTimer, remainingSec, isTicking } from './timer.js';
 import { PlanPage } from './plan.js';
-import { addTask } from './logic.js';
+import { addTask, logEnergy } from './logic.js';
+import { ReviewPage } from './review.js';
+import { startPushSync } from './push.js';
 import { addSocial } from './life.js';
 import { RoutinePage, BodyPage, InfluencePage, LeisurePage } from './life.js';
 import { ShutdownPage, IdeasPage, ReadingPage, JournalPage, addIdea } from './mind.js';
@@ -29,6 +31,7 @@ const MODULES = [
   { r: 'denik', l: 'Deník', ic: 'pen' },
   { r: 'vlivy', l: 'Vlivy', ic: 'wave' },
   { r: 'volno', l: 'Volný čas', ic: 'leaf' },
+  { r: 'revize', l: 'Týdenní revize', ic: 'review' },
   { r: 'statistiky', l: 'Statistiky', ic: 'chart' },
   { r: 'cile', l: 'Cíle', ic: 'target' },
   { r: 'nastaveni', l: 'Nastavení', ic: 'gear' },
@@ -48,6 +51,7 @@ const ICONS = {
   target: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 12h.01',
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1.3z',
   plus: 'M12 5v14M5 12h14',
+  review: 'M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4M12 8v4l3 2',
   cal: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4M8 14h3M8 17h6',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
@@ -136,7 +140,7 @@ function Quick({ close }) {
         <button class="qbtn" onClick=${() => { close(); go(new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'ritual' : 'zitra'); }}><b>${new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'Uzavřít den' : 'Plán zítřka'}</b><span>${new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'večerní rituál' : 'naplánovat předem'}</span></button>
       </div>
       <div class="field"><span class="lbl">Nálada teď</span><${Scale} value=${j.mood} onChange=${(mood) => { setDaily('journal', day, { mood }); done('Nálada zapsána'); }} /></div>
-      <div class="field"><span class="lbl">Energie teď</span><${Scale} value=${j.energy} onChange=${(energy) => { setDaily('journal', day, { energy }); done('Energie zapsána'); }} /></div>
+      <div class="field"><span class="lbl">Energie teď</span><${Scale} value=${null} onChange=${(v) => { if (v) { logEnergy(day, v); done('Energie zapsána'); } }} /></div>
       ${toast && html`<div class="toast" role="status">${toast}</div>`}
     </div>
   </div>`;
@@ -162,6 +166,18 @@ function App() {
     addEventListener('beforeinstallprompt', f);
     return () => { data.subscription.unsubscribe(); removeEventListener('beforeinstallprompt', f); };
   }, []);
+  const [toast, setToast] = useState(null);
+  // zkratky z ikony aplikace (/?a=water|block|idea|plan)
+  useEffect(() => {
+    if (!store.user || !store.loaded) return;
+    const a = new URLSearchParams(location.search).get('a');
+    if (!a) return;
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (a === 'water') { setDaily('body', today(), (b) => ({ ...b, waterMl: (b.waterMl || 0) + 250 })); setToast('+250 ml vody zapsáno'); setTimeout(() => setToast(null), 2500); go('telo'); }
+    else if (a === 'block') go('blok');
+    else if (a === 'idea') setQuick(true);
+    else if (a === 'plan') go('zitra');
+  }, [store.user, store.loaded]);
 
   if (store.user === undefined) return html`<div class="splash"></div>`;
   if (!store.user || recovery) return html`<${Auth} recovery=${recovery} />`;
@@ -170,6 +186,7 @@ function App() {
   let page;
   switch (route) {
     case 'zitra': page = html`<${PlanPage} />`; break;
+    case 'revize': page = html`<${ReviewPage} />`; break;
     case 'blok': page = html`<${TimerPage} preset=${takePayload()} />`; break;
     case 'rutina': page = html`<${RoutinePage} />`; break;
     case 'telo': page = html`<${BodyPage} />`; break;
@@ -205,6 +222,7 @@ function App() {
       <a href="#/vice" class=${inMore ? 'on' : ''}><${Icon} n="more" /><span>Více</span></a>
     </nav>
     ${quick && html`<${Quick} close=${() => setQuick(false)} />`}
+    ${toast && html`<div class="app-toast" role="status">${toast}</div>`}
   </div>`;
 }
 
@@ -212,6 +230,8 @@ getState().user = undefined;
 render(html`<${App} />`, document.getElementById('app'));
 initAuth();
 startNotifier();
+startPushSync();
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.go) { const h = new URL(e.data.go, location.origin).hash; if (h) location.hash = h; } });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

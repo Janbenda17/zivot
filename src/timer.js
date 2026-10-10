@@ -9,7 +9,7 @@ const KEY = 'zivot.timer';
 let T = load();
 const subs = new Set();
 function load() { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch { return null; } }
-function save() { try { T ? localStorage.setItem(KEY, JSON.stringify(T)) : localStorage.removeItem(KEY); } catch {} subs.forEach((f) => f({})); syncWakeLock(); }
+function save() { try { T ? localStorage.setItem(KEY, JSON.stringify(T)) : localStorage.removeItem(KEY); } catch {} subs.forEach((f) => f({})); syncWakeLock(); try { window.dispatchEvent(new Event('zivot-timer')); } catch {} }
 export function timerState() { return T; }
 /** Běží odpočet (blok nebo pauza)? */
 export function isTicking(t = T) { return !!t && (t.phase === 'running' || t.phase === 'break'); }

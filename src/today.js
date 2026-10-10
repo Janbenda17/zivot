@@ -2,7 +2,11 @@ import { useEffect, useState } from 'preact/hooks';
 import { html, today, fmtDay, fromMin, nowMin, fmtClock, fmtDur, addDays, vibrate } from './util.js';
 import { Page, Card } from './ui.js';
 import { daily, setDaily, useStore } from './store.js';
-import { dayBlocks, deepMin, setBlock, moveBlockStart, tasksFor, toggleTask, chaptersDue, removeExtraBlock, templateFor } from './logic.js';
+import { dayBlocks, deepMin, setBlock, moveBlockStart, tasksFor, toggleTask, chaptersDue, removeExtraBlock, templateFor, logEnergy, energyInSlot } from './logic.js';
+import { ENERGY_SLOTS } from './push.js';
+import { reviewDue } from './review.js';
+import { Scale } from './ui.js';
+import { useStore as _us } from './store.js';
 import { BLOCK_TYPES } from './defaults.js';
 import { useTimer, remainingSec, isTicking } from './timer.js';
 import { go } from './nav.js';
@@ -70,6 +74,8 @@ export function TodayPage() {
     ${log.intention && html`<p class="intention">„${log.intention}“</p>`}
 
     <${Now} cur=${cur} next=${next} nm=${nm} day=${day} tasks=${tasks} />
+    <${EnergyPrompt} day=${day} nm=${nm} />
+    ${reviewDue() && html`<button class="banner" onClick=${() => go('revize')}><span>Týdenní revize: 10 minut na ohlédnutí a cíle</span><b>›</b></button>`}
 
     <${Overdue} />
     <${DayTasks} day=${day} blocks=${blocks} title="Úkoly dne" />
@@ -187,4 +193,13 @@ function BlockEdit({ b, day, onClose }) {
         : html`<button class="btn sm ghost" onClick=${() => setBlock(day, b.id, { removed: true })}>Dnes vynechat úplně</button>`}
     </div>
   </div>`;
+}
+
+function EnergyPrompt({ day, nm }) {
+  const { settings } = _us();
+  if (!settings.energyPrompts) return null;
+  const slot = ENERGY_SLOTS.find((s) => nm >= s.from + 60 && nm < s.to);
+  if (!slot || energyInSlot(day, slot.from, slot.to)) return null;
+  return html`<div class="card energy-card"><div class="card-h"><h2>Jak máš energii ${slot.label}?</h2></div>
+    <${Scale} value=${null} onChange=${(v) => v && logEnergy(day, v)} labels=${['vyčerpaný', 'unavený', 'ok', 'svěží', 'plný energie']} /></div>`;
 }

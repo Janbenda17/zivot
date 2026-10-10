@@ -50,6 +50,10 @@ export function RoutinePage() {
   const toggle = (it) => {
     const on = !r[it.key];
     setDaily('routine', day, { [it.key]: on, ...(on ? { [it.key + 'At']: new Date().toISOString() } : {}) });
+    if (on && day === today() && !daily('body', day).sleep?.wake && !items.some((x) => r[x.key])) {
+      const w = r.wakeAt || hhmm();
+      setDaily('body', day, (b) => ({ ...b, sleep: { ...(b.sleep || {}), wake: w, wakeEst: !r.wakeAt } }));
+    }
     if (it.key === 'water') setDaily('body', day, (b) => ({ ...b, waterMl: Math.max(0, (b.waterMl || 0) + (on ? 500 : -500)) }));
   };
   const wakeNow = () => {
@@ -123,12 +127,13 @@ export function BodyPage() {
     <${Card} title="Spánek" meta=${hrs != null ? fmtDur(hrs * 60) : 'noc před tímto dnem'}>
       ${isToday && html`<div class="row wrap">
         ${!sl.wake && html`<button class="btn" onClick=${() => { set({ sleep: { ...sl, wake: hhmm() } }); vibrate(); }}>Vstávám teď</button>`}
-        <button class=${'btn' + (tomorrowBed ? ' on' : '')} onClick=${() => { setDaily('body', addDays(today(), 1), (x) => ({ ...x, sleep: { ...(x.sleep || {}), bed: hhmm() } })); vibrate(); }}>${tomorrowBed ? `Jdu spát · ${tomorrowBed}` : 'Jdu spát teď'}</button>
+        <button class=${'btn' + (tomorrowBed && !daily('body', addDays(today(), 1)).sleep?.bedEst ? ' on' : '')} onClick=${() => { setDaily('body', addDays(today(), 1), (x) => ({ ...x, sleep: { ...(x.sleep || {}), bed: hhmm(), bedEst: false } })); vibrate(); }}>${tomorrowBed ? `Jdu spát · ${tomorrowBed}` : 'Jdu spát teď'}</button>
       </div>`}
       <div class="grid2">
-        <div class="field"><label class="lbl" for="sbed">Usnutí</label><input id="sbed" type="time" value=${sl.bed || ''} onChange=${(e) => set({ sleep: { ...sl, bed: e.target.value } })} /></div>
-        <div class="field"><label class="lbl" for="swake">Probuzení</label><input id="swake" type="time" value=${sl.wake || ''} onChange=${(e) => set({ sleep: { ...sl, wake: e.target.value } })} /></div>
+        <div class="field"><label class="lbl" for="sbed">Usnutí</label><input id="sbed" type="time" value=${sl.bed || ''} onChange=${(e) => set({ sleep: { ...sl, bed: e.target.value, bedEst: false } })} /></div>
+        <div class="field"><label class="lbl" for="swake">Probuzení</label><input id="swake" type="time" value=${sl.wake || ''} onChange=${(e) => set({ sleep: { ...sl, wake: e.target.value, wakeEst: false } })} /></div>
       </div>
+      ${(sl.bedEst || sl.wakeEst) && html`<p class="hint">${sl.bedEst ? 'Usnutí je odhad podle uzavření dne. ' : ''}${sl.wakeEst ? 'Probuzení je odhad podle rutiny. ' : ''}Oprav, pokud nesedí.</p>`}
       <div class="field"><span class="lbl">Kvalita spánku</span><${Scale} value=${sl.q} onChange=${(q) => set({ sleep: { ...sl, q } })} /></div>
       ${avgSleep != null && html`<p class="muted small">Průměr 7 dní ${avgSleep.toLocaleString('cs-CZ', { maximumFractionDigits: 1 })} h · cíl ${store.settings.sleepGoalH} h</p>`}
     </${Card}>

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { useEffect, useState } from 'preact/hooks';
-import { uuid } from './util.js';
+import { uuid, today as todayKey, addDays } from './util.js';
+const addDaysKey = (n) => addDays(todayKey(), n);
 import { DEFAULT_SETTINGS } from './defaults.js';
 
 const SUPABASE_URL = 'https://ajafpizwhifnmitnuyuj.supabase.co';
@@ -9,7 +10,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
 
-export const DAILY = ['daylog', 'routine', 'body', 'shutdown', 'journal', 'influence', 'leisure_check'];
+export const DAILY = ['daylog', 'routine', 'body', 'shutdown', 'journal', 'influence', 'leisure_check', 'review'];
 
 const LS = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -29,6 +30,9 @@ const state = {
 let version = 0;
 const listeners = new Set();
 function emit() { version++; listeners.forEach((f) => f(version)); }
+
+/** Odběr změn mimo komponenty (např. synchronizace upozornění). */
+export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
 export function useStore() {
   const [, set] = useState(0);
@@ -120,6 +124,7 @@ async function setUser(u) {
 }
 function mergeSettings(s) {
   const out = { ...structuredClone(DEFAULT_SETTINGS), ...(s || {}) };
+  out.pushTypes = { ...DEFAULT_SETTINGS.pushTypes, ...(s?.pushTypes || {}) };
   // starší verze měla jediný rozvrh "schedule": převést na šablonu Pracovní den
   if (s && s.schedule && !s.templates) out.templates = out.templates.map((t) => (t.id === 'main' ? { ...t, blocks: s.schedule } : t));
   delete out.schedule;
@@ -134,7 +139,8 @@ export async function refresh() {
   try {
     const all = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await sb.from('entries').select('*').order('created_at').range(from, from + 999);
+      const cut = addDaysKey(-400);
+      const { data, error } = await sb.from('entries').select('*').or(`day.is.null,day.gte.${cut}`).order('created_at').range(from, from + 999);
       if (error) throw error;
       all.push(...data);
       if (data.length < 1000) break;
@@ -204,13 +210,20 @@ export function setSettings(patch) {
   pushOp({ table: 'settings', type: 'upsert', id: 'settings', data: state.settings });
 }
 export function getState() { return state; }
-export function exportData() {
-  return {
-    exported_at: new Date().toISOString(),
-    email: state.user?.email,
-    settings: state.settings,
-    entries: [...state.rows.values()].map(({ id, kind, day, data, created_at }) => ({ id, kind, day, data, created_at })),
-  };
+/** Export všech dat: ze serveru (i starší než 400 dní), při chybě z tohoto zařízení. */
+export async function exportData() {
+  let entries = null;
+  try {
+    const all = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from('entries').select('id,kind,day,data,created_at').order('created_at').range(from, from + 999);
+      if (error) throw error;
+      all.push(...data);
+      if (data.length < 1000) break;
+    }
+    entries = all;
+  } catch { entries = [...state.rows.values()].map(({ id, kind, day, data, created_at }) => ({ id, kind, day, data, created_at })); }
+  return { exported_at: new Date().toISOString(), settings: state.settings, entries };
 }
 export async function signOut() {
   LS.del(cacheKey());

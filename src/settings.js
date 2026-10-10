@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { html, today, toMin, uuid, fromMin, nowMin, addDays, DOW } from './util.js';
 import { Page, Card, Check, Stepper, Chips } from './ui.js';
 import { useStore, setSettings, exportData, signOut, getState, daily } from './store.js';
@@ -6,6 +6,7 @@ import { BLOCK_TYPES, DEFAULT_TEMPLATES, DEFAULT_ROUTINE } from './defaults.js';
 import { dayBlocks, inputToMin } from './logic.js';
 import { timerState, remainingSec, markNotified, chime } from './timer.js';
 import { ConfirmDelete } from './mind.js';
+import { pushSupported, isStandalone, isIOS, enablePush, disablePush, testPush, currentSubscription } from './push.js';
 
 // ---------- notifikace ----------
 export async function notify(title, body, tag) {
@@ -29,13 +30,13 @@ export function startNotifier() {
     if (t && (t.phase === 'running' || t.phase === 'break') && !t.pausedAt && remainingSec(t) <= 0 && !t.notified) {
       markNotified(); chime();
       try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch {}
-      if (st.settings.notify) {
+      if (st.settings.notify && !st.settings.push) {
         if (t.phase === 'break') notify('Pauza skončila', 'Čas na další blok, nebo konec práce.', 'timer');
         else notify('Blok skončil', t.goal ? `Cíl: ${t.goal}. Prodloužit, nebo ohodnotit?` : 'Prodloužit, nebo ohodnotit?', 'timer');
       }
     }
     if (++n % 3 !== 0) return; // bloky stačí kontrolovat každých 15 s
-    if (!st.user || !st.settings.notify) return;
+    if (!st.user || !st.settings.notify || st.settings.push) return;
     const nm = nowMin(), lead = st.settings.notifyLeadMin || 0;
     const sent = getSent();
     for (const b of dayBlocks(today())) {
@@ -102,9 +103,9 @@ export function SettingsPage({ installPrompt }) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
-  const doExport = () => download(new Blob([JSON.stringify(exportData(), null, 2)], { type: 'application/json' }), `zivot-export-${today()}.json`);
-  const doExportCsv = () => {
-    const rows = exportData().entries;
+  const doExport = async () => download(new Blob([JSON.stringify(await exportData(), null, 2)], { type: 'application/json' }), `zivot-export-${today()}.json`);
+  const doExportCsv = async () => {
+    const rows = (await exportData()).entries;
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = ['kind,day,created_at,data', ...rows.map((r) => [r.kind, r.day, r.created_at, JSON.stringify(r.data)].map(esc).join(','))].join('\n');
     download(new Blob(['﻿' + csv], { type: 'text/csv' }), `zivot-export-${today()}.csv`);
@@ -154,13 +155,7 @@ export function SettingsPage({ installPrompt }) {
       <div class="set-row"><span>Limit sociálních sítí</span><${Stepper} value=${s.socialLimitMin} step=${5} min=${0} max=${300} unit="min" onChange=${(v) => setSettings({ socialLimitMin: v })} /></div>
     </${Card}>
 
-    <${Card} title="Upozornění">
-      ${perm === 'unsupported'
-        ? html`<p class="muted">Tenhle prohlížeč upozornění nepodporuje. Na iPhonu nejdřív přidej aplikaci na plochu (Sdílet → Přidat na plochu) a otevři ji odtud.</p>`
-        : html`<${Check} on=${s.notify} onClick=${toggleNotify} label="Upozornit na začátek bloku a konec časovače" sub=${perm === 'denied' ? 'Prohlížeč upozornění blokuje, povol je v nastavení webu.' : null} />
-          ${s.notify && html`<div class="set-row"><span>Předstih</span><${Stepper} value=${s.notifyLeadMin} step=${5} min=${0} max=${30} unit="min" onChange=${(v) => setSettings({ notifyLeadMin: v })} /></div>`}
-          <p class="muted small">Upozornění chodí, když je aplikace otevřená nebo běží na pozadí. Po úplném zavření ji telefon může uspat.</p>`}
-    </${Card}>
+    <${PushCard} />
 
     ${!standalone && html`<${Card} title="Aplikace na ploše">
       ${installPrompt ? html`<button class="btn primary" onClick=${() => installPrompt.prompt()}>Nainstalovat aplikaci</button>`
@@ -177,4 +172,35 @@ export function SettingsPage({ installPrompt }) {
       <button class="btn ghost" onClick=${signOut}>Odhlásit se</button>
     </${Card}>
   </${Page}>`;
+}
+
+const PUSH_TYPES = [
+  ['blocks', 'Začátek bloku'], ['timer', 'Konec časovače a pauzy'], ['plan', 'Naplánuj zítřek'], ['sleep', 'Zapiš spánek (ráno)'],
+  ['water', 'Pitný režim (14:00 a 18:00, jen když chybí)'], ['energy', 'Energie 3× denně'], ['review', 'Týdenní revize (neděle 19:00)'],
+];
+function PushCard() {
+  const store = useStore();
+  const s = store.settings;
+  const [sub, setSub] = useState(undefined);
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { currentSubscription().then((x) => setSub(!!x)); }, [s.push]);
+  const on = s.push && sub;
+  const run = async (fn) => { setBusy(true); setMsg(null); const e = await fn(); setBusy(false); if (e) setMsg({ ok: false, t: e }); setSub(!!(await currentSubscription())); };
+  return html`<${Card} title="Upozornění">
+    ${!pushSupported() && isIOS() && !isStandalone()
+      ? html`<p class="notice warn">Na iPhonu fungují upozornění jen z aplikace na ploše: Safari → Sdílet → Přidat na plochu, pak ji otevři odtud a vrať se sem.</p>`
+      : !pushSupported() ? html`<p class="muted">Tento prohlížeč upozornění nepodporuje.</p>`
+      : html`
+        <${Check} on=${on} label="Upozornění i se zavřenou aplikací" sub=${on ? 'Zapnuto na tomto zařízení' : 'Zapni na každém zařízení, kde je chceš dostávat'}
+          onClick=${() => !busy && run(on ? async () => { await disablePush(); return null; } : enablePush)} />
+        ${on && html`
+          <div class="checks">${PUSH_TYPES.map(([k, l]) => html`<${Check} on=${s.pushTypes[k]} label=${l} onClick=${() => setSettings({ pushTypes: { ...s.pushTypes, [k]: !s.pushTypes[k] } })} />`)}</div>
+          <div class="set-row"><span>Předstih u bloků</span><${Stepper} value=${s.notifyLeadMin} step=${5} min=${0} max=${30} unit="min" onChange=${(v) => setSettings({ notifyLeadMin: v })} /></div>
+          <div class="set-row"><label for="planat">Připomenout plán zítřka v</label>
+            <input id="planat" type="time" style="width:auto" value=${s.planRemindAt} onChange=${(e) => e.target.value && setSettings({ planRemindAt: e.target.value })} /></div>
+          <button class="btn" disabled=${busy} onClick=${() => run(async () => { const e = await testPush(); if (!e) setMsg({ ok: true, t: 'Odesláno. Do minuty by mělo přijít upozornění.' }); return e; })}>Poslat zkušební upozornění</button>`}
+        ${msg && html`<p class=${'notice ' + (msg.ok ? 'calm' : 'warn')}>${msg.t}</p>`}
+        <p class="muted small">Připomínky se přeskočí, když už je věc hotová (blok odškrtnutý, zítřek naplánovaný, voda vypitá).</p>`}
+  </${Card}>`;
 }

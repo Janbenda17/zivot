@@ -1,5 +1,5 @@
 import { all, daily, getState, setDaily, add, update } from './store.js';
-import { toMin, addDays, today, parseDay } from './util.js';
+import { toMin, addDays, today, parseDay, nowMin } from './util.js';
 import { BLOCK_TYPES } from './defaults.js';
 
 // ---------------- šablony a bloky ----------------
@@ -173,3 +173,13 @@ export function habitCount(key, from, to) {
   }
   return n;
 }
+
+// ---------------- energie během dne ----------------
+export function logEnergy(day, v) {
+  const t = Math.round(nowMin());
+  setDaily('journal', day, (d) => {
+    const log = [...(d.energyLog || []), { t, v }];
+    return { ...d, energyLog: log, energy: Math.round(log.reduce((a, x) => a + x.v, 0) / log.length) };
+  });
+}
+export function energyInSlot(day, from, to) { return (daily('journal', day).energyLog || []).find((e) => e.t >= from && e.t < to) || null; }

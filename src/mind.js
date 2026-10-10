@@ -74,7 +74,9 @@ export function ShutdownPage() {
     : html`<p>Všechno je zapsané. Práce na dnešek končí.</p>
       ${bed && tChk.wake != null && html`<p class="muted">Spánek v ${fromMin(bed.start)} · zítra vstáváš v ${fromMin(tChk.wake)}${tChk.sleepH ? ` (${tChk.sleepH.toFixed(1)} h spánku)` : ''}.</p>`}
       ${!tLog.planned && html`<p class="notice warn">Zítřek ještě není naplánovaný. <button class="link" onClick=${() => setStep(3)}>Naplánovat</button></p>`}
-      <button class="btn primary big" onClick=${() => { vibrate([30, 60, 30]); set({ closed: true, closedAt: new Date().toISOString() }); }}>Den uzavřen</button>`;
+      <button class="btn primary big" onClick=${() => { vibrate([30, 60, 30]); set({ closed: true, closedAt: new Date().toISOString() });
+        if (!daily('body', tomorrow).sleep?.bed) { const n = new Date(); const est = Math.max(n.getHours() * 60 + n.getMinutes() + (n.getHours() < 4 ? 1440 : 0) + 20, bed ? bed.start : 0); setDaily('body', tomorrow, (x) => ({ ...x, sleep: { ...(x.sleep || {}), bed: fromMin(est), bedEst: true } })); }
+      }}>Den uzavřen</button>`;
 
   return html`<${Page} title="Rituál ukončení" sub=${`${fmtDay(day, true)} · série ${streak('shutdown')}`}>
     <ol class="steps">${STEPS.map((t, i) => html`<li><button class=${(i === step ? 'on' : '') + (i < step ? ' past' : '')} onClick=${() => setStep(i)} aria-current=${i === step ? 'step' : null}>

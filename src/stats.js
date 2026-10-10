@@ -45,6 +45,7 @@ export function StatsPage() {
     </div>
     <${Card} title="Půl roku hluboké práce"><${Heatmap} dm=${dm} cap=${store.settings.deepCapMin} /></${Card}>
     <${BlockQuality} />
+    <${EnergyDay} />
     <${PlanAdherence} />
     <${WeekOverview} ws=${ws} />
     <${Streaks} />
@@ -52,7 +53,7 @@ export function StatsPage() {
   </${Page}>`;
 }
 
-function weekData(ws) {
+export function weekData(ws) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i)).filter((d) => d <= today());
   const deep = all('deep_block').filter((r) => r.day >= ws && r.day <= addDays(ws, 6));
   const q = deep.filter((r) => r.data.quality);
@@ -205,5 +206,19 @@ function PlanAdherence() {
   return html`<${Card} title="Dodržení plánu" meta="14 dní · % hotových bloků">
     <${Bars} items=${items} max=${100} fmt=${(v) => v + ' %'} height=${90} />
     <p class="muted small">Průměr ${avg} %. Zvýrazněné dny byly naplánované večer předem.</p>
+  </${Card}>`;
+}
+
+function EnergyDay() {
+  const t = today();
+  const logs = [];
+  for (let i = 0; i < 30; i++) for (const e of daily('journal', addDays(t, -i)).energyLog || []) logs.push(e);
+  if (logs.length < 3) return html`<${Card} title="Energie během dne"><p class="muted small">Zapisuj energii 3× denně (karta na stránce Dnes nebo tlačítko +). Po pár dnech tu uvidíš, kdy máš nejvíc sil.</p></${Card}>`;
+  const buckets = Array.from({ length: 8 }, (_, i) => 8 * 60 + i * 120);
+  const items = buckets.map((b) => { const v = logs.filter((e) => (e.t % 1440) >= b && (e.t % 1440) < b + 120 || (b === 22 * 60 && e.t >= 1440)).map((e) => e.v); return { label: String(b / 60), v: v.length ? v.reduce((a, c) => a + c, 0) / v.length : 0, n: v.length }; });
+  const best = [...items].filter((x) => x.n).sort((a, b) => b.v - a.v)[0];
+  return html`<${Card} title="Energie během dne" meta=${`30 dní · ${logs.length} zápisů`}>
+    <${Bars} items=${items.map((x) => ({ ...x, hi: x === best }))} max=${5} fmt=${(v) => v.toFixed(1)} height=${90} />
+    ${best && html`<p class="muted small">Nejvíc energie máš kolem ${best.label}–${+best.label + 2} h (⌀ ${best.v.toLocaleString('cs-CZ', { maximumFractionDigits: 1 })}). Sem patří nejtěžší hluboká práce.</p>`}
   </${Card}>`;
 }

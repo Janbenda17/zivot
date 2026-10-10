@@ -49,11 +49,19 @@ const pages = {
   goals: (await import(root + 'goals.js')).GoalsPage,
   settings: (await import(root + 'settings.js')).SettingsPage,
   plan: (await import(root + 'plan.js')).PlanPage,
+  review: (await import(root + 'review.js')).ReviewPage,
 };
 for (const [k, P] of Object.entries(pages)) {
   try { const out = render(html`<${P} />`); console.log(k, 'OK', out.length); }
   catch (e) { console.log(k, 'FAIL', e.stack.split('\n').slice(0, 4).join(' | ')); }
 }
+const P = await import(root + 'push.js');
+st.settings.pushTypes = { blocks: true, timer: true, plan: true, sleep: true, water: true, energy: true, review: true };
+const q = P.buildQueue(); console.log('queue', q.length, q.slice(0, 2).map((x) => x.title + ' @' + x.fire_at + ' ' + x.cond).join(' | '));
+const SG = await import(root + 'suggest.js');
+console.log('suggest', SG.suggestionsFor(addDays(d, 1)).map((x) => x.text).join(' / '));
+console.log('distributed', SG.distributeTasks(addDays(d, 1), L.dayBlocks(addDays(d, 1))));
+L.logEnergy(d, 4); console.log('energy', JSON.stringify(S.daily('journal', d).energyLog));
 const T = await import(root + 'timer.js');
 T.startTimer({ type: 'work', goal: 'x', plannedMin: 50 });
 console.log('plancheck', JSON.stringify((({overlaps, deepPlanned, sleepH, wake}) => ({o: overlaps.length, deepPlanned, sleepH, wake}))(L.planCheck(addDays(d, 1)))));

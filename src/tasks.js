@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
 import { html, today, addDays, fmtDay, fromMin, vibrate } from './util.js';
 import { QuickAdd, Empty } from './ui.js';
-import { update, remove } from './store.js';
+import { update, remove, all } from './store.js';
+import { weekStart } from './util.js';
 import { tasksFor, backlog, overdueTasks, addTask, toggleTask, moveTask } from './logic.js';
 
 const dayLabel = (d) => (d === today() ? 'dnes' : d === addDays(today(), 1) ? 'zítra' : fmtDay(d));
@@ -27,6 +28,13 @@ export function TaskRow({ t, blocks, showDay = false }) {
           <option value="">Bez bloku</option>
           ${blocks.filter((b) => b.type !== 'sleep').map((b) => html`<option value=${b.id}>${fromMin(b.start)} ${b.title}</option>`)}
         </select>`}
+      ${(() => {
+        const ws = weekStart(td), mon = td.slice(0, 7);
+        const goals = all('goal').filter((g) => !g.data.done && (g.data.horizon === 'long' || (g.data.horizon === 'week' && g.data.period === ws) || (g.data.horizon === 'month' && g.data.period === mon)));
+        return goals.length > 0 && html`<label class="sr" for=${'tg' + t.id}>Cíl</label>
+          <select id=${'tg' + t.id} value=${d.goalId || ''} onChange=${(e) => update(t.id, { goalId: e.target.value || null })}>
+            <option value="">Bez cíle</option>${goals.map((g) => html`<option value=${g.id}>🎯 ${g.data.title}</option>`)}</select>`;
+      })()}
       <div class="row wrap">
         ${d.day !== td && html`<button class="btn sm" onClick=${() => moveTask(t, td)}>Na dnes</button>`}
         ${d.day !== tm && html`<button class="btn sm" onClick=${() => moveTask(t, tm)}>Na zítra</button>`}

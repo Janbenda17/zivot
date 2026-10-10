@@ -6,6 +6,7 @@ import { templates, templateIdFor, dayBlocks, planCheck, setBlock, moveBlockStar
 import { BLOCK_TYPES } from './defaults.js';
 import { DayTasks, Backlog } from './tasks.js';
 import { takePayload } from './nav.js';
+import { Suggestions } from './suggest.js';
 
 export function TimeInput({ id, value, onChange, label }) {
   return html`<span class="time-in"><label class="sr" for=${id}>${label}</label>
@@ -49,8 +50,7 @@ export function PlanPage() {
       <div><span class="lbl">Úkoly</span><b>${tasks.length}</b></div>
     </div>
     ${chk.overlaps.length > 0 && html`<p class="notice warn">Překrývá se: ${chk.overlaps.map(([a, b]) => `${a.title} a ${b.title}`).join('; ')}.</p>`}
-    ${chk.overCap && html`<p class="notice warn">Plánuješ ${fmtDur(chk.deepPlanned)} hluboké práce, víc než strop. Zvaž zkrácení nebo odebrání bloku.</p>`}
-    ${chk.sleepShort && html`<p class="notice warn">Mezi spánkem a vstáváním je jen ${chk.sleepH.toFixed(1)} h. Posuň spánek dřív nebo začátek dne později.</p>`}
+    <${Suggestions} day=${day} />
 
     <${Card} title="Typ dne">
       <${Chips} options=${templates().map((x) => ({ key: x.id, label: x.name }))} value=${tplId} onChange=${(v) => v && set({ template: v })} />

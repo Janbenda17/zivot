@@ -12,8 +12,13 @@ function periodRange(horizon, period) {
   if (horizon === 'month') { const [y, m] = period.split('-').map(Number); const last = new Date(y, m, 0).getDate(); return [`${period}-01`, `${period}-${String(last).padStart(2, '0')}`]; }
   return null;
 }
+export function goalTasks(g) { return all('task').filter((t) => t.data.goalId === g.id); }
 export function goalProgress(g) {
   const d = g.data;
+  if (d.habit === 'tasks') {
+    const ts = goalTasks(g), done = ts.filter((t) => t.data.done).length, target = Math.max(ts.length, 1);
+    return { value: done, ratio: ts.length ? done / target : 0, expected: 0, behind: false, left: ts.length - done, daysLeft: 0, tasks: true, total: ts.length };
+  }
   if (!d.habit || !d.target) return d.done ? 1 : 0;
   const r = periodRange(d.horizon, d.period);
   if (!r) return 0;
@@ -64,7 +69,7 @@ function GoalItem({ g, longs }) {
   const d = g.data;
   const p = goalProgress(g);
   const parent = longs.find((l) => l.id === d.parentId);
-  const hab = HABITS.find((h) => h.key === d.habit);
+  const hab = d.habit === 'tasks' ? { key: 'tasks', label: 'Úkoly' } : HABITS.find((h) => h.key === d.habit);
   return html`<li class="goal">
     <div class="row">
       ${!d.habit && d.horizon !== 'long' && html`<button class=${'ch-check' + (d.done ? ' on' : '')} aria-pressed=${!!d.done} aria-label="Splněno" onClick=${() => { vibrate(30); update(g.id, { done: !d.done }); }}></button>`}
@@ -74,7 +79,10 @@ function GoalItem({ g, longs }) {
         ${parent && html`<span class="muted small">↳ ${parent.data.title}</span>`}
       </button>
     </div>
-    ${hab && d.target && html`<div class="g-prog"><div class="prog"><i class=${p.behind ? 'over' : ''} style=${`width:${p.ratio * 100}%`}></i></div>
+    ${d.habit === 'tasks' && html`<div class="g-prog"><div class="prog"><i style=${`width:${p.ratio * 100}%`}></i></div>
+      <span class="small nowrap">Úkoly: ${p.value}/${p.total}</span></div>
+      <span class="muted small">${p.total ? 'Úkoly k cíli přiřadíš klepnutím na úkol.' : 'Zatím žádné úkoly. Přiřaď je klepnutím na úkol → cíl.'}</span>`}
+    ${hab && d.habit !== 'tasks' && d.target && html`<div class="g-prog"><div class="prog"><i class=${p.behind ? 'over' : ''} style=${`width:${p.ratio * 100}%`}></i></div>
       <span class="small nowrap">${hab.label}: ${Math.round(p.value * 10) / 10}/${d.target}${d.habit === 'deep' ? ' h' : '×'}</span></div>
       <span class=${'small ' + (p.ratio >= 1 ? 'ok' : p.behind ? 'late' : 'muted')}>${p.ratio >= 1 ? 'Splněno ✓' : p.behind ? `Pozadu · zbývá ${Math.round(p.left * 10) / 10}${d.habit === 'deep' ? ' h' : '×'} za ${Math.round(p.daysLeft)} ${p.daysLeft === 1 ? 'den' : 'dní'}` : 'V plánu'}</span>`}
     ${d.horizon === 'long' && (() => {
@@ -96,17 +104,17 @@ function GoalForm({ kind, longs, ws, mon, close }) {
   const [title, setTitle] = useState(''), [why, setWhy] = useState(''), [habit, setHabit] = useState(null), [target, setTarget] = useState(kind === 'week' ? 4 : 15), [parentId, setParent] = useState(null);
   const submit = (e) => {
     e.preventDefault();
-    const ttl = title.trim() || (habit ? HABITS.find((h) => h.key === habit).label + ` ${target}${habit === 'deep' ? ' h' : '×'}` : '');
+    const ttl = title.trim() || (habit && habit !== 'tasks' ? HABITS.find((h) => h.key === habit).label + ` ${target}${habit === 'deep' ? ' h' : '×'}` : '');
     if (!ttl) return;
-    add('goal', { horizon: kind, title: ttl, why: why.trim(), habit, target: habit ? +target : null, parentId, period: kind === 'week' ? ws : kind === 'month' ? mon : null, done: false });
+    add('goal', { horizon: kind, title: ttl, why: why.trim(), habit, target: habit && habit !== 'tasks' ? +target : null, parentId, period: kind === 'week' ? ws : kind === 'month' ? mon : null, done: false });
     close();
   };
   return html`<form class="goal-form" onSubmit=${submit}>
     <div class="field"><label class="lbl" for=${'gt' + kind}>Cíl</label><input id=${'gt' + kind} value=${title} onInput=${(e) => setTitle(e.target.value)} placeholder=${kind === 'long' ? 'Např. Napsat knihu' : 'Např. 4× gym'} /></div>
     ${kind === 'long'
       ? html`<div class="field"><label class="lbl" for="gwhy">Proč</label><textarea id="gwhy" rows="2" value=${why} onInput=${(e) => setWhy(e.target.value)} placeholder="Co se změní, až ho dosáhnu?"></textarea></div>`
-      : html`<div class="field"><span class="lbl">Napojit na návyk (měří se automaticky)</span><${Chips} options=${HABITS} value=${habit} onChange=${setHabit} /></div>
-        ${habit && html`<div class="field"><label class="lbl" for=${'gtar' + kind}>Cíl ${habit === 'deep' ? '(hodin)' : '(kolikrát)'}</label><input id=${'gtar' + kind} type="number" min="1" value=${target} onInput=${(e) => setTarget(e.target.value)} /></div>`}
+      : html`<div class="field"><span class="lbl">Napojit na návyk (měří se automaticky)</span><${Chips} options=${[...HABITS, { key: 'tasks', label: 'Navázané úkoly' }]} value=${habit} onChange=${setHabit} /></div>
+        ${habit && habit !== 'tasks' && html`<div class="field"><label class="lbl" for=${'gtar' + kind}>Cíl ${habit === 'deep' ? '(hodin)' : '(kolikrát)'}</label><input id=${'gtar' + kind} type="number" min="1" value=${target} onInput=${(e) => setTarget(e.target.value)} /></div>`}
         ${longs.length > 0 && html`<div class="field"><span class="lbl">Patří k dlouhodobému cíli</span><${Chips} options=${longs.map((l) => ({ key: l.id, label: l.data.title }))} value=${parentId} onChange=${setParent} /></div>`}`}
     <div class="row"><button class="btn ghost" type="button" onClick=${close}>Zrušit</button><button class="btn primary grow" type="submit">Přidat</button></div>
   </form>`;

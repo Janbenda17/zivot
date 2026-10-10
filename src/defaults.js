@@ -73,6 +73,10 @@ export const DEFAULT_SETTINGS = {
   sleepGoalH: 7.5,
   notify: false,
   notifyLeadMin: 5,
+  push: false,
+  pushTypes: { blocks: true, timer: true, plan: true, sleep: true, water: true, energy: true, review: true },
+  planRemindAt: '21:30',
+  energyPrompts: true,
 };
 
 export const JOURNAL_QUESTIONS = [
