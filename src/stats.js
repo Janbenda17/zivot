@@ -2,8 +2,8 @@ import { useState } from 'preact/hooks';
 import { html, today, addDays, fmtHours, fmtDay, weekStart, DOW_S, parseDay, pearson, pad } from './util.js';
 import { Page, Card, LineChart, Bars, Chips } from './ui.js';
 import { useStore, all, daily } from './store.js';
-import { deepByDay, streak, bestStreak, habitValue, sleepHours } from './logic.js';
-import { HABITS } from './defaults.js';
+import { deepByDay, streak, bestStreak, habitValue, sleepHours, dayBlocks, tasksFor } from './logic.js';
+import { HABITS, DEEP_TYPES } from './defaults.js';
 
 function sumRange(m, from, to) { let s = 0; for (const [d, v] of m) if (d >= from && d <= to) s += v; return s; }
 
@@ -43,6 +43,9 @@ export function StatsPage() {
         <${Bars} items=${weeks} fmt=${(v) => v.toFixed(1) + ' h'} />
       </${Card}>
     </div>
+    <${Card} title="Půl roku hluboké práce"><${Heatmap} dm=${dm} cap=${store.settings.deepCapMin} /></${Card}>
+    <${BlockQuality} />
+    <${PlanAdherence} />
     <${WeekOverview} ws=${ws} />
     <${Streaks} />
     <${Correlations} />
@@ -67,6 +70,8 @@ function weekData(ws) {
     mood: avg(moods),
     social: days.reduce((a, d) => a + (daily('influence', d).socialMin || 0), 0),
     shutdown: days.filter((d) => habitValue('shutdown', d)).length,
+    tasks: days.reduce((a, d) => a + tasksFor(d).filter((t) => t.data.done).length, 0),
+    planned: days.filter((d) => daily('daylog', d).planned).length,
   };
 }
 
@@ -84,6 +89,8 @@ function WeekOverview({ ws }) {
     ['Průměrná nálada', a.mood, b.mood, f1, 1],
     ['Sociální sítě', a.social, b.social, (v) => v + ' min', -1],
     ['Dny uzavřeny', a.shutdown, b.shutdown, (v) => v + '×', 1],
+    ['Dny naplánované předem', a.planned, b.planned, (v) => v + '×', 1],
+    ['Hotové úkoly', a.tasks, b.tasks, (v) => v + '', 1],
   ];
   return html`<${Card} title="Týdenní přehled" meta=${`od ${fmtDay(ws)}`}>
     <div class="tbl-wrap"><table class="tbl wide">
@@ -124,6 +131,8 @@ function Correlations() {
     sleepQ: { label: 'Kvalita spánku', get: (d) => daily('body', d).sleep?.q ?? null },
     gym: { label: 'Gym (ano/ne)', get: (d) => (daily('body', d).gym ? (daily('body', d).gym.done ? 1 : 0) : null) },
     social: { label: 'Sociální sítě (min)', get: (d) => daily('influence', d).socialMin ?? null },
+    routine: { label: 'Ranní rutina (ano/ne)', get: (d) => (Object.keys(daily('routine', d)).length ? (habitValue('routine', d) ? 1 : 0) : null) },
+    planned: { label: 'Den naplánovaný předem', get: (d) => (Object.keys(daily('daylog', d)).length ? (daily('daylog', d).planned ? 1 : 0) : null) },
   };
   const outcomes = {
     focus: { label: 'kvalita soustředění', get: (d) => { const a = qualityOf.get(d); return a ? a.reduce((x, y) => x + y, 0) / a.length : null; } },
@@ -143,5 +152,58 @@ function Correlations() {
         <span class="corr-bar" aria-hidden="true"><i class=${x.r < 0 ? 'neg' : 'pos'} style=${`width:${Math.abs(x.r) * 50}%;${x.r < 0 ? 'right:50%' : 'left:50%'}`}></i></span>
         <span class="small nowrap">${label(x.r)} <span class="muted">r=${x.r.toFixed(2)}, n=${x.n}</span></span>`}
     </li>`)}</ul>
+  </${Card}>`;
+}
+
+function Heatmap({ dm, cap }) {
+  const t = today();
+  const weeks = 26;
+  const start = addDays(weekStart(t), -(weeks - 1) * 7);
+  const lvl = (m) => (!m ? 0 : m < cap * 0.25 ? 1 : m < cap * 0.5 ? 2 : m < cap * 0.85 ? 3 : 4);
+  const cols = Array.from({ length: weeks }, (_, w) => Array.from({ length: 7 }, (_, i) => addDays(start, w * 7 + i)));
+  const total = [...dm.entries()].filter(([d]) => d >= start && d <= t).reduce((a, [, v]) => a + v, 0);
+  const active = [...dm.entries()].filter(([d, v]) => d >= start && d <= t && v > 0).length;
+  return html`<div class="heat-wrap"><div class="heat" role="img" aria-label="Kalendář hluboké práce za 26 týdnů">
+    ${cols.map((c) => html`<div class="heat-col">${c.map((d) => html`<span class=${'h' + (d > t ? ' f' : ' l' + lvl(dm.get(d) || 0)) + (d === t ? ' t' : '')} title=${`${fmtDay(d)}: ${fmtHours(dm.get(d) || 0)}`}></span>`)}</div>`)}
+  </div></div>
+  <p class="muted small">${active} dní s hlubokou prací · ${fmtHours(total)} celkem. Sytější = blíž dennímu stropu.</p>`;
+}
+
+function BlockQuality() {
+  const t = today();
+  const from = addDays(t, -29);
+  const rows = all('deep_block').filter((r) => r.day >= from);
+  if (!rows.length) return null;
+  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  const f1 = (v) => (v == null ? '–' : v.toLocaleString('cs-CZ', { maximumFractionDigits: 1 }));
+  const byType = DEEP_TYPES.map((d) => { const r = rows.filter((x) => x.data.type === d.key); return { l: d.label, min: r.reduce((a, x) => a + (x.data.actualMin || 0), 0), q: avg(r.map((x) => x.data.quality).filter(Boolean)), n: r.length }; });
+  const slot = (r) => { const h = new Date(r.data.startedAt || 0).getHours(); return h < 12 ? 0 : h < 17 ? 1 : 2; };
+  const bySlot = ['Dopoledne', 'Odpoledne', 'Večer'].map((l, i) => { const r = rows.filter((x) => x.data.startedAt && slot(x) === i); return { l, q: avg(r.map((x) => x.data.quality).filter(Boolean)), n: r.length }; });
+  const met = rows.filter((r) => r.data.goalMet);
+  const metRate = met.length ? met.filter((r) => r.data.goalMet === 'yes').length / met.length : null;
+  const best = bySlot.filter((x) => x.q != null && x.n >= 2).sort((a, b) => b.q - a.q)[0];
+  return html`<${Card} title="Kvalita bloků" meta="30 dní">
+    <div class="tbl-wrap"><table class="tbl wide"><thead><tr><th></th><th>Hodiny</th><th>Bloků</th><th>⌀ kvalita</th></tr></thead>
+      <tbody>${byType.map((x) => html`<tr><th>${x.l}</th><td>${fmtHours(x.min)}</td><td>${x.n}</td><td>${f1(x.q)}</td></tr>`)}</tbody></table></div>
+    <div class="tbl-wrap"><table class="tbl wide"><thead><tr><th>Denní doba</th><th>Bloků</th><th>⌀ kvalita</th></tr></thead>
+      <tbody>${bySlot.map((x) => html`<tr><th>${x.l}</th><td>${x.n}</td><td>${f1(x.q)}</td></tr>`)}</tbody></table></div>
+    <p class="muted small">${best ? `Nejlépe se soustředíš ${best.l.toLowerCase()}. ` : ''}${metRate != null ? `Cíl bloku splněn v ${Math.round(metRate * 100)} % bloků.` : ''} ⌀ vyrušení na blok ${f1(avg(rows.map((r) => r.data.interruptions || 0)))}.</p>
+  </${Card}>`;
+}
+
+function PlanAdherence() {
+  const t = today();
+  const days = Array.from({ length: 14 }, (_, i) => addDays(t, -i - 1)).reverse();
+  const items = days.map((d) => {
+    const bl = dayBlocks(d).filter((b) => b.type !== 'sleep');
+    const done = bl.filter((b) => b.status === 'done').length;
+    return { label: DOW_S[parseDay(d).getDay()], v: bl.length ? Math.round((done / bl.length) * 100) : 0, hi: !!daily('daylog', d).planned, any: Object.keys(daily('daylog', d)).length > 0 };
+  });
+  if (!items.some((x) => x.any)) return null;
+  const used = items.filter((x) => x.any);
+  const avg = Math.round(used.reduce((a, x) => a + x.v, 0) / used.length);
+  return html`<${Card} title="Dodržení plánu" meta="14 dní · % hotových bloků">
+    <${Bars} items=${items} max=${100} fmt=${(v) => v + ' %'} height=${90} />
+    <p class="muted small">Průměr ${avg} %. Zvýrazněné dny byly naplánované večer předem.</p>
   </${Card}>`;
 }

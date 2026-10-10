@@ -20,8 +20,12 @@ export function goalProgress(g) {
   const to = r[1] < today() ? r[1] : today();
   let v = habitCount(d.habit, r[0], to);
   if (d.habit === 'deep') v = v / 60;
-  return { value: v, ratio: Math.min(1, v / d.target) };
+  const total = (new Date(r[1]) - new Date(r[0])) / 864e5 + 1;
+  const elapsed = Math.min(total, Math.max(0, (new Date(to) - new Date(r[0])) / 864e5 + 1));
+  const expected = (d.target * elapsed) / total;
+  return { value: v, ratio: Math.min(1, v / d.target), expected, behind: v + 1e-9 < Math.floor(expected), left: Math.max(0, d.target - v), daysLeft: total - elapsed };
 }
+const prevPeriod = (kind, ws, mon) => (kind === 'week' ? addDays(ws, -7) : (() => { const [y, m] = mon.split('-').map(Number); const d = new Date(y, m - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })());
 
 export function GoalsPage() {
   useStore();
@@ -47,6 +51,11 @@ function Section({ kind, title, items, onAdd, form, close, longs, ws, mon }) {
   return html`<${Card} title=${title} meta=${html`<button class="btn sm" onClick=${onAdd}>${form ? 'Zavřít' : '+ Cíl'}</button>`}>
     ${form && html`<${GoalForm} kind=${kind} longs=${longs} ws=${ws} mon=${mon} close=${close} />`}
     ${items.length ? html`<ul class="goals">${items.map((g) => html`<${GoalItem} key=${g.id} g=${g} longs=${longs} />`)}</ul>` : !form && html`<${Empty}>Zatím žádný cíl.</${Empty}>`}
+    ${kind !== 'long' && !form && (() => {
+      const pp = prevPeriod(kind, ws, mon);
+      const prev = all('goal').filter((g) => g.data.horizon === kind && g.data.period === pp && !items.some((i) => i.data.title === g.data.title));
+      return prev.length > 0 && html`<button class="btn sm ghost" onClick=${() => prev.forEach((g) => add('goal', { ...g.data, period: kind === 'week' ? ws : mon, done: false }))}>Převzít ${prev.length} ${kind === 'week' ? 'z minulého týdne' : 'z minulého měsíce'}</button>`;
+    })()}
   </${Card}>`;
 }
 
@@ -65,8 +74,15 @@ function GoalItem({ g, longs }) {
         ${parent && html`<span class="muted small">↳ ${parent.data.title}</span>`}
       </button>
     </div>
-    ${hab && d.target && html`<div class="g-prog"><div class="prog"><i style=${`width:${p.ratio * 100}%`}></i></div>
-      <span class="small nowrap">${hab.label}: ${Math.round(p.value * 10) / 10}/${d.target}${d.habit === 'deep' ? ' h' : '×'}</span></div>`}
+    ${hab && d.target && html`<div class="g-prog"><div class="prog"><i class=${p.behind ? 'over' : ''} style=${`width:${p.ratio * 100}%`}></i></div>
+      <span class="small nowrap">${hab.label}: ${Math.round(p.value * 10) / 10}/${d.target}${d.habit === 'deep' ? ' h' : '×'}</span></div>
+      <span class=${'small ' + (p.ratio >= 1 ? 'ok' : p.behind ? 'late' : 'muted')}>${p.ratio >= 1 ? 'Splněno ✓' : p.behind ? `Pozadu · zbývá ${Math.round(p.left * 10) / 10}${d.habit === 'deep' ? ' h' : '×'} za ${Math.round(p.daysLeft)} ${p.daysLeft === 1 ? 'den' : 'dní'}` : 'V plánu'}</span>`}
+    ${d.horizon === 'long' && (() => {
+      const kids = all('goal').filter((x) => x.data.parentId === g.id && x.data.horizon !== 'long');
+      if (!kids.length) return null;
+      const ok = kids.filter((x) => { const q = goalProgress(x); return typeof q === 'number' ? q >= 1 : q.ratio >= 1; }).length;
+      return html`<span class="muted small">Navázané kroky: ${ok}/${kids.length} splněno</span>`;
+    })()}
     ${open && html`<div class="g-edit">
       ${d.horizon === 'long' && html`<${NoteField} id=${'why' + g.id} value=${d.why} placeholder="Proč je to pro mě důležité?" onSave=${(why) => update(g.id, { why })} />`}
       <div class="row between">

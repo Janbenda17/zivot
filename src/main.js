@@ -1,10 +1,13 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { html, today, vibrate } from './util.js';
+import { html, today, vibrate, addDays } from './util.js';
 import { useStore, initAuth, sb, setDaily, daily, getState } from './store.js';
 import { useRoute, go, takePayload } from './nav.js';
 import { TodayPage } from './today.js';
-import { TimerPage, useTimer, remainingSec } from './timer.js';
+import { TimerPage, useTimer, remainingSec, isTicking } from './timer.js';
+import { PlanPage } from './plan.js';
+import { addTask } from './logic.js';
+import { addSocial } from './life.js';
 import { RoutinePage, BodyPage, InfluencePage, LeisurePage } from './life.js';
 import { ShutdownPage, IdeasPage, ReadingPage, JournalPage, addIdea } from './mind.js';
 import { StatsPage } from './stats.js';
@@ -16,6 +19,7 @@ import './style.css';
 
 const MODULES = [
   { r: 'dnes', l: 'Dnes', ic: 'sun' },
+  { r: 'zitra', l: 'Plán zítřka', ic: 'cal' },
   { r: 'blok', l: 'Hluboký blok', ic: 'timer' },
   { r: 'rutina', l: 'Ranní rutina', ic: 'dawn' },
   { r: 'telo', l: 'Tělo', ic: 'body' },
@@ -44,6 +48,7 @@ const ICONS = {
   target: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 12h.01',
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1.3z',
   plus: 'M12 5v14M5 12h14',
+  cal: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4M8 14h3M8 17h6',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 const Icon = ({ n }) => html`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d=${ICONS[n]} /></svg>`;
@@ -100,6 +105,7 @@ function Auth({ recovery }) {
 // ---------- rychlý zápis ----------
 function Quick({ close }) {
   const [v, setV] = useState('');
+  const [mode, setMode] = useState('idea');
   const day = today();
   const j = daily('journal', day);
   const b = daily('body', day);
@@ -110,16 +116,24 @@ function Quick({ close }) {
   return html`<div class="sheet-bg" onClick=${close}>
     <div class="sheet" role="dialog" aria-label="Rychlý zápis" onClick=${(e) => e.stopPropagation()}>
       <div class="sheet-grip"></div>
-      <form class="quick" onSubmit=${(e) => { e.preventDefault(); if (!v.trim()) return; addIdea(v.trim()); setV(''); done('Nápad uložen'); }}>
-        <label class="sr" for="qidea">Nápad</label>
-        <input id="qidea" value=${v} onInput=${(e) => setV(e.target.value)} placeholder="Nápad… (#štítek)" autofocus enterkeyhint="send" />
+      <div class="chips" role="group" aria-label="Co zapisuješ">
+        ${[['idea', 'Nápad'], ['today', 'Úkol dnes'], ['tomorrow', 'Úkol zítra']].map(([k, l]) => html`<button type="button" class=${'chip' + (mode === k ? ' on' : '')} aria-pressed=${mode === k} onClick=${() => setMode(k)}>${l}</button>`)}
+      </div>
+      <form class="quick" onSubmit=${(e) => {
+        e.preventDefault(); const x = v.trim(); if (!x) return;
+        if (mode === 'idea') { addIdea(x); done('Nápad uložen'); }
+        else { addTask(x, mode === 'today' ? day : addDays(day, 1)); done(mode === 'today' ? 'Úkol na dnes' : 'Úkol na zítra'); }
+        setV('');
+      }}>
+        <label class="sr" for="qidea">Text</label>
+        <input id="qidea" value=${v} onInput=${(e) => setV(e.target.value)} placeholder=${mode === 'idea' ? 'Nápad… (#štítek)' : 'Úkol…'} autofocus enterkeyhint="send" />
         <button class="btn primary" type="submit">Uložit</button>
       </form>
       <div class="quick-grid">
         <button class="qbtn" onClick=${() => { setDaily('body', day, { waterMl: (b.waterMl || 0) + 250 }); done('+250 ml vody'); }}><b>+250 ml</b><span>voda · ${((b.waterMl || 0) / 1000).toLocaleString('cs-CZ')} l</span></button>
-        <button class="qbtn" onClick=${() => { setDaily('influence', day, { socialMin: (inf.socialMin || 0) + 15 }); done('+15 min sítě'); }}><b>+15 min</b><span>sociální sítě · ${inf.socialMin || 0}</span></button>
+        <button class="qbtn" onClick=${() => { addSocial(day, 'other', 15); done('+15 min sítě'); }}><b>+15 min</b><span>sociální sítě · ${inf.socialMin || 0}</span></button>
         <button class="qbtn" onClick=${() => { close(); go('blok'); }}><b>Blok</b><span>spustit časovač</span></button>
-        <button class="qbtn" onClick=${() => { close(); go('ritual'); }}><b>Uzavřít den</b><span>večerní rituál</span></button>
+        <button class="qbtn" onClick=${() => { close(); go(new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'ritual' : 'zitra'); }}><b>${new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'Uzavřít den' : 'Plán zítřka'}</b><span>${new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'večerní rituál' : 'naplánovat předem'}</span></button>
       </div>
       <div class="field"><span class="lbl">Nálada teď</span><${Scale} value=${j.mood} onChange=${(mood) => { setDaily('journal', day, { mood }); done('Nálada zapsána'); }} /></div>
       <div class="field"><span class="lbl">Energie teď</span><${Scale} value=${j.energy} onChange=${(energy) => { setDaily('journal', day, { energy }); done('Energie zapsána'); }} /></div>
@@ -155,6 +169,7 @@ function App() {
 
   let page;
   switch (route) {
+    case 'zitra': page = html`<${PlanPage} />`; break;
     case 'blok': page = html`<${TimerPage} preset=${takePayload()} />`; break;
     case 'rutina': page = html`<${RoutinePage} />`; break;
     case 'telo': page = html`<${BodyPage} />`; break;
@@ -175,7 +190,7 @@ function App() {
     <nav class="side" aria-label="Moduly">
       <div class="brand"><span class="brand-mark"></span>Život</div>
       ${MODULES.map((m) => html`<a href=${'#/' + m.r} class=${route === m.r ? 'on' : ''} aria-current=${route === m.r ? 'page' : null}><${Icon} n=${m.ic} />${m.l}
-        ${m.r === 'blok' && t && html`<small class="side-t">●</small>`}</a>`)}
+        ${m.r === 'blok' && isTicking(t) && html`<small class="side-t">●</small>`}</a>`)}
       <button class="btn primary side-quick" onClick=${() => setQuick(true)}><${Icon} n="plus" /> Rychlý zápis</button>
     </nav>
     <main class="main">
@@ -184,7 +199,7 @@ function App() {
     </main>
     <nav class="tabbar" aria-label="Hlavní navigace">
       <a href="#/dnes" class=${route === 'dnes' ? 'on' : ''}><${Icon} n="sun" /><span>Dnes</span></a>
-      <a href="#/blok" class=${route === 'blok' ? 'on' : ''}><${Icon} n="timer" /><span>${t ? (remainingSec(t) > 0 ? Math.ceil(remainingSec(t) / 60) + ' min' : 'flow') : 'Blok'}</span></a>
+      <a href="#/blok" class=${route === 'blok' ? 'on' : ''}><${Icon} n="timer" /><span>${isTicking(t) ? (remainingSec(t) > 0 ? Math.ceil(remainingSec(t) / 60) + ' min' : t.phase === 'break' ? 'konec' : 'flow') : 'Blok'}</span></a>
       <button class="tab-plus" aria-label="Rychlý zápis" onClick=${() => { vibrate(); setQuick(true); }}><${Icon} n="plus" /></button>
       <a href="#/denik" class=${route === 'denik' ? 'on' : ''}><${Icon} n="pen" /><span>Deník</span></a>
       <a href="#/vice" class=${inMore ? 'on' : ''}><${Icon} n="more" /><span>Více</span></a>

@@ -38,8 +38,34 @@ export const DEFAULT_ROUTINE = [
   { key: 'plan', label: 'Plán dne' },
 ];
 
+// Šablony dnů: každý den v týdnu má přiřazenou jednu (lze změnit pro konkrétní den v plánu).
+export const DEFAULT_TEMPLATES = [
+  { id: 'main', name: 'Pracovní den', blocks: DEFAULT_SCHEDULE },
+  {
+    id: 'light', name: 'Lehký den', blocks: [
+      { id: 'l0900', start: '09:00', end: '10:00', title: 'Ranní rutina', type: 'routine' },
+      { id: 'l1000', start: '10:00', end: '10:15', title: 'Voda + plán dne', type: 'plan' },
+      { id: 'l1015', start: '10:15', end: '12:15', title: 'Práce', type: 'work' },
+      { id: 'l1400', start: '14:00', end: '16:00', title: 'Gym + sauna', type: 'body' },
+      { id: 'l1745', start: '17:45', end: '18:45', title: 'Psychologie', type: 'psych' },
+      { id: 'l2210', start: '22:10', end: '22:40', title: 'Rituál ukončení', type: 'shutdown' },
+      { id: 'l2400', start: '24:00', end: '24:30', title: 'Spánek', type: 'sleep' },
+    ],
+  },
+  {
+    id: 'off', name: 'Volno', blocks: [
+      { id: 'o0930', start: '09:30', end: '10:30', title: 'Ranní rutina', type: 'routine' },
+      { id: 'o1030', start: '10:30', end: '10:45', title: 'Voda + plán dne', type: 'plan' },
+      { id: 'o1400', start: '14:00', end: '16:00', title: 'Pohyb venku', type: 'body' },
+      { id: 'o2200', start: '22:00', end: '22:20', title: 'Rituál ukončení', type: 'shutdown' },
+      { id: 'o2400', start: '24:00', end: '24:30', title: 'Spánek', type: 'sleep' },
+    ],
+  },
+];
+
 export const DEFAULT_SETTINGS = {
-  schedule: DEFAULT_SCHEDULE,
+  templates: DEFAULT_TEMPLATES,
+  weekMap: ['main', 'main', 'main', 'main', 'main', 'main', 'main'], // index = den v týdnu (0 = neděle)
   routine: DEFAULT_ROUTINE,
   deepCapMin: 240,
   waterGoalMl: 2500,
@@ -73,7 +99,7 @@ export const READING_QUESTIONS = [
   'Co mě překvapilo nebo vyvolalo odpor, a proč?',
 ];
 
-export const GYM_TYPES = ['Síla', 'Kardio', 'Mobilita', 'Plavání', 'Jiné'];
+export const GYM_TYPES = ['Síla', 'Horní tělo', 'Dolní tělo', 'Kardio', 'Mobilita', 'Plavání', 'Jiné'];
 
 // Návyky, které lze napojit na cíle a sledovat ve statistikách
 export const HABITS = [
@@ -86,5 +112,18 @@ export const HABITS = [
   { key: 'detox', label: 'Detox den' },
   { key: 'social', label: 'Sítě pod limitem' },
   { key: 'shutdown', label: 'Den uzavřen' },
+  { key: 'read', label: 'Čtení kapitoly' },
+  { key: 'planned', label: 'Zítřek naplánován' },
   { key: 'deep', label: 'Hluboká práce (h)' },
 ];
+
+export const SOCIAL_APPS = [
+  { key: 'ig', label: 'Instagram' },
+  { key: 'yt', label: 'YouTube' },
+  { key: 'tt', label: 'TikTok' },
+  { key: 'x', label: 'X' },
+  { key: 'fb', label: 'Facebook' },
+  { key: 'other', label: 'Jiné' },
+];
+
+export const GRATITUDE_SLOTS = 3;

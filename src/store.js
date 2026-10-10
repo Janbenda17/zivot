@@ -118,7 +118,14 @@ async function setUser(u) {
     scheduleFlush(50);
   } else emit();
 }
-function mergeSettings(s) { return { ...structuredClone(DEFAULT_SETTINGS), ...(s || {}) }; }
+function mergeSettings(s) {
+  const out = { ...structuredClone(DEFAULT_SETTINGS), ...(s || {}) };
+  // starší verze měla jediný rozvrh "schedule": převést na šablonu Pracovní den
+  if (s && s.schedule && !s.templates) out.templates = out.templates.map((t) => (t.id === 'main' ? { ...t, blocks: s.schedule } : t));
+  delete out.schedule;
+  if (!Array.isArray(out.weekMap) || out.weekMap.length !== 7) out.weekMap = DEFAULT_SETTINGS.weekMap.slice();
+  return out;
+}
 
 let refreshing = false;
 export async function refresh() {

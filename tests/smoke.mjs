@@ -25,6 +25,14 @@ S.add('book', { title: 'Kniha', chapters: [{ n: 1, plan: d, read: false, answers
 S.add('goal', { horizon: 'long', title: 'Dlouhý', why: 'proto' });
 S.add('goal', { horizon: 'week', title: 'Gym', habit: 'gym', target: 4, period: (await import(root+'util.js')).weekStart(d) });
 S.add('leisure_idea', { text: 'Výlet' });
+const L = await import(root + 'logic.js');
+L.addTask('Úkol A', d); const tb = L.addTask('Úkol B', addDays(d, 1)); L.addTask('Starý', addDays(d, -2)); L.addTask('Někdy', null);
+S.setDaily('daylog', addDays(d, 1), { mainTask: 'Zítra hlavní', template: 'light', planned: true });
+L.addExtraBlock(addDays(d, 1), { title: 'Zubař', start: 900, end: 960, type: 'other' });
+S.setDaily('body', addDays(d, -1), { weight: 80.2, gym: { done: true, type: 'Síla', ex: [{ id: 'e1', name: 'Dřep', sets: 3, reps: 8, kg: 80 }] } });
+S.setDaily('body', d, { weight: 79.8 });
+S.setDaily('influence', d, { socialMin: 20 });
+S.setDaily('journal', d, { gratitude: ['a', '', 'c'] });
 S.add('influence_item', { text: 'Podcast', sign: '+' });
 const pages = {
   today: (await import(root + 'today.js')).TodayPage,
@@ -40,6 +48,7 @@ const pages = {
   stats: (await import(root + 'stats.js')).StatsPage,
   goals: (await import(root + 'goals.js')).GoalsPage,
   settings: (await import(root + 'settings.js')).SettingsPage,
+  plan: (await import(root + 'plan.js')).PlanPage,
 };
 for (const [k, P] of Object.entries(pages)) {
   try { const out = render(html`<${P} />`); console.log(k, 'OK', out.length); }
@@ -47,6 +56,7 @@ for (const [k, P] of Object.entries(pages)) {
 }
 const T = await import(root + 'timer.js');
 T.startTimer({ type: 'work', goal: 'x', plannedMin: 50 });
+console.log('plancheck', JSON.stringify((({overlaps, deepPlanned, sleepH, wake}) => ({o: overlaps.length, deepPlanned, sleepH, wake}))(L.planCheck(addDays(d, 1)))));
 try { console.log('running', render(html`<${pages.timer} />`).includes('Vyrušení')); } catch (e) { console.log('running FAIL', e.message); }
-for (const k of ["read","ideas","goals","today"]) console.log("\n=="+k, render(html`<${pages[k]} />`).replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,600));
+for (const k of ["plan","today"]) console.log("\n=="+k, render(html`<${pages[k]} />`).replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,600));
 process.exit(0);

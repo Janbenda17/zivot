@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'preact/hooks';
-import { html, today, toMin, uuid, fromMin, nowMin } from './util.js';
-import { Page, Card, Check, Stepper } from './ui.js';
-import { useStore, setSettings, exportData, signOut, getState } from './store.js';
-import { BLOCK_TYPES, DEFAULT_SCHEDULE } from './defaults.js';
-import { dayBlocks } from './logic.js';
+import { useState } from 'preact/hooks';
+import { html, today, toMin, uuid, fromMin, nowMin, addDays, DOW } from './util.js';
+import { Page, Card, Check, Stepper, Chips } from './ui.js';
+import { useStore, setSettings, exportData, signOut, getState, daily } from './store.js';
+import { BLOCK_TYPES, DEFAULT_TEMPLATES, DEFAULT_ROUTINE } from './defaults.js';
+import { dayBlocks, inputToMin } from './logic.js';
 import { timerState, remainingSec, markNotified, chime } from './timer.js';
 import { ConfirmDelete } from './mind.js';
 
@@ -22,13 +22,19 @@ function getSent() { try { return JSON.parse(localStorage.getItem(sentKey())) ||
 function addSent(id) { try { localStorage.setItem(sentKey(), JSON.stringify([...getSent(), id])); } catch {} }
 
 export function startNotifier() {
+  let n = 0;
   const check = () => {
     const st = getState();
     const t = timerState();
-    if (t && t.phase === 'running' && !t.pausedAt && remainingSec(t) <= 0 && !t.notified) {
+    if (t && (t.phase === 'running' || t.phase === 'break') && !t.pausedAt && remainingSec(t) <= 0 && !t.notified) {
       markNotified(); chime();
-      if (st.settings.notify) notify('Blok skončil', t.goal ? `Cíl: ${t.goal}. Prodloužit, nebo ohodnotit?` : 'Prodloužit, nebo ohodnotit?', 'timer');
+      try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch {}
+      if (st.settings.notify) {
+        if (t.phase === 'break') notify('Pauza skončila', 'Čas na další blok, nebo konec práce.', 'timer');
+        else notify('Blok skončil', t.goal ? `Cíl: ${t.goal}. Prodloužit, nebo ohodnotit?` : 'Prodloužit, nebo ohodnotit?', 'timer');
+      }
     }
+    if (++n % 3 !== 0) return; // bloky stačí kontrolovat každých 15 s
     if (!st.user || !st.settings.notify) return;
     const nm = nowMin(), lead = st.settings.notifyLeadMin || 0;
     const sent = getSent();
@@ -36,23 +42,51 @@ export function startNotifier() {
       const at = b.start - lead;
       if (b.status === 'pending' && nm >= at && nm < at + 2 && !sent.includes(b.id + '@' + b.start)) {
         addSent(b.id + '@' + b.start);
-        notify(lead ? `Za ${lead} min: ${b.title}` : `Teď: ${b.title}`, `${fromMin(b.start)}–${fromMin(b.end)}${b.goal ? ' · ' + b.goal : ''}`, 'block');
+        const extra = b.type === 'shutdown' && !daily('daylog', addDays(today(), 1)).planned ? ' · nezapomeň naplánovat zítřek' : '';
+        notify(lead ? `Za ${lead} min: ${b.title}` : `Teď: ${b.title}`, `${fromMin(b.start)}–${fromMin(b.end)}${b.goal ? ' · ' + b.goal : ''}${extra}`, 'block');
       }
     }
   };
-  setInterval(check, 15000);
+  setInterval(check, 5000);
   setTimeout(check, 2000);
+}
+
+const disp = (m) => fromMin(m);
+
+// ---------- editor šablony ----------
+function TemplateEditor({ tpl, onChange }) {
+  const blocks = [...tpl.blocks].sort((a, b) => toMin(a.start) - toMin(b.start));
+  const setRow = (id, p) => onChange({ ...tpl, blocks: tpl.blocks.map((r) => (r.id === id ? { ...r, ...p } : r)) });
+  const asStr = (v) => { const m = inputToMin(v); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`.padStart(5, '0'); };
+  const deep = blocks.filter((b) => BLOCK_TYPES[b.type]?.deep).reduce((a, b) => a + Math.max(0, toMin(b.end) - toMin(b.start)), 0);
+  const cap = getState().settings.deepCapMin;
+  return html`<div class="tpl-edit">
+    <div class="field"><label class="lbl" for=${'tn' + tpl.id}>Název šablony</label>
+      <input id=${'tn' + tpl.id} value=${tpl.name} onBlur=${(e) => e.target.value.trim() && e.target.value !== tpl.name && onChange({ ...tpl, name: e.target.value.trim() })} /></div>
+    <p class=${'small ' + (deep > cap ? 'late' : 'muted')}>Hluboká práce v šabloně: ${Math.round(deep / 6) / 10} h${deep > cap ? ` (víc než strop ${cap / 60} h)` : ''}</p>
+    <ul class="sched">${blocks.map((r) => html`<li>
+      <label class="sr" for=${'ss' + r.id}>Začátek</label><input id=${'ss' + r.id} type="time" value=${disp(toMin(r.start))} onChange=${(e) => e.target.value && setRow(r.id, { start: asStr(e.target.value) })} />
+      <label class="sr" for=${'se' + r.id}>Konec</label><input id=${'se' + r.id} type="time" value=${disp(toMin(r.end))} onChange=${(e) => e.target.value && setRow(r.id, { end: asStr(e.target.value) })} />
+      <label class="sr" for=${'sn' + r.id}>Název</label><input id=${'sn' + r.id} class="grow" value=${r.title} onBlur=${(e) => e.target.value !== r.title && setRow(r.id, { title: e.target.value })} />
+      <label class="sr" for=${'sy' + r.id}>Typ</label><select id=${'sy' + r.id} value=${r.type} onChange=${(e) => setRow(r.id, { type: e.target.value })}>
+        ${Object.entries(BLOCK_TYPES).map(([k, v]) => html`<option value=${k}>${v.label}</option>`)}</select>
+      <button class="x" aria-label="Odebrat blok" onClick=${() => onChange({ ...tpl, blocks: tpl.blocks.filter((x) => x.id !== r.id) })}>×</button>
+    </li>`)}</ul>
+    <button class="btn" onClick=${() => { const last = blocks[blocks.length - 1]; const st = last ? Math.min(toMin(last.end), 1430) : 540; onChange({ ...tpl, blocks: [...tpl.blocks, { id: 'b' + uuid().slice(0, 8), start: fromMin(st), end: fromMin(st + 60), title: 'Nový blok', type: 'other' }] }); }}>+ Přidat blok</button>
+  </div>`;
 }
 
 // ---------- stránka ----------
 export function SettingsPage({ installPrompt }) {
   const store = useStore();
   const s = store.settings;
+  const tpls = s.templates;
+  const [edit, setEdit] = useState(tpls[0]?.id);
   const [perm, setPerm] = useState('Notification' in window ? Notification.permission : 'unsupported');
-  const sched = [...s.schedule].sort((a, b) => toMin(a.start) - toMin(b.start));
-  const setRow = (id, p) => setSettings({ schedule: s.schedule.map((r) => (r.id === id ? { ...r, ...p } : r)) });
-  const deepPlanned = sched.filter((b) => BLOCK_TYPES[b.type]?.deep).reduce((a, b) => a + Math.max(0, toMin(b.end) - toMin(b.start)), 0);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const cur = tpls.find((t) => t.id === edit) || tpls[0];
+  const saveTpl = (t) => setSettings({ templates: tpls.map((x) => (x.id === t.id ? t : x)) });
+  const [newItem, setNewItem] = useState('');
 
   const toggleNotify = async () => {
     if (s.notify) return setSettings({ notify: false });
@@ -62,38 +96,55 @@ export function SettingsPage({ installPrompt }) {
     setPerm(p);
     if (p === 'granted') { setSettings({ notify: true }); notify('Upozornění zapnutá', 'Dám vědět na začátku bloků a na konci časovače.', 'test'); }
   };
-  const doExport = () => {
-    const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: 'application/json' });
+  const download = (blob, name) => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = `zivot-export-${today()}.json`;
+    a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
+  const doExport = () => download(new Blob([JSON.stringify(exportData(), null, 2)], { type: 'application/json' }), `zivot-export-${today()}.json`);
   const doExportCsv = () => {
     const rows = exportData().entries;
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = ['kind,day,created_at,data', ...rows.map((r) => [r.kind, r.day, r.created_at, JSON.stringify(r.data)].map(esc).join(','))].join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = `zivot-export-${today()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
+    download(new Blob(['﻿' + csv], { type: 'text/csv' }), `zivot-export-${today()}.csv`);
   };
 
   return html`<${Page} title="Nastavení">
-    <${Card} title="Rozvrh" meta=${`hluboká práce v plánu: ${Math.round(deepPlanned / 6) / 10} h`}>
-      ${deepPlanned > s.deepCapMin && html`<p class="notice warn small">Rozvrh plánuje víc hluboké práce, než je tvůj denní strop (${s.deepCapMin / 60} h). Časovač tě na to upozorní.</p>`}
-      <ul class="sched">${sched.map((r) => html`<li>
-        <label class="sr" for=${'ss' + r.id}>Začátek</label><input id=${'ss' + r.id} type="time" value=${disp(r.start)} onChange=${(e) => setRow(r.id, { start: fixMid(e.target.value, r) })} />
-        <label class="sr" for=${'se' + r.id}>Konec</label><input id=${'se' + r.id} type="time" value=${disp(r.end)} onChange=${(e) => setRow(r.id, { end: fixMid(e.target.value, r, true) })} />
-        <label class="sr" for=${'sn' + r.id}>Název</label><input id=${'sn' + r.id} class="grow" value=${r.title} onBlur=${(e) => e.target.value !== r.title && setRow(r.id, { title: e.target.value })} />
-        <label class="sr" for=${'sy' + r.id}>Typ</label><select id=${'sy' + r.id} value=${r.type} onChange=${(e) => setRow(r.id, { type: e.target.value })}>
-          ${Object.entries(BLOCK_TYPES).map(([k, v]) => html`<option value=${k}>${v.label}</option>`)}</select>
-        <button class="x" aria-label="Odebrat blok" onClick=${() => setSettings({ schedule: s.schedule.filter((x) => x.id !== r.id) })}>×</button>
-      </li>`)}</ul>
+    <${Card} title="Rozvrh podle dne v týdnu">
+      <p class="hint">Každý den má výchozí šablonu. Pro konkrétní den ji změníš v plánu dne.</p>
+      <div class="weekmap">${[1, 2, 3, 4, 5, 6, 0].map((d) => html`<div class="set-row">
+        <span>${DOW[d]}</span>
+        <label class="sr" for=${'wm' + d}>Šablona pro ${DOW[d]}</label>
+        <select id=${'wm' + d} value=${s.weekMap[d]} onChange=${(e) => { const wm = s.weekMap.slice(); wm[d] = e.target.value; setSettings({ weekMap: wm }); }}>
+          ${tpls.map((t) => html`<option value=${t.id}>${t.name}</option>`)}</select></div>`)}</div>
+    </${Card}>
+
+    <${Card} title="Šablony dnů">
+      <${Chips} options=${tpls.map((t) => ({ key: t.id, label: t.name }))} value=${cur?.id} onChange=${(v) => v && setEdit(v)} />
+      ${cur && html`<${TemplateEditor} key=${cur.id} tpl=${cur} onChange=${saveTpl} />`}
       <div class="row between wrap">
-        <button class="btn" onClick=${() => { const last = sched[sched.length - 1]; const st = last ? Math.min(toMin(last.end), 1430) : 540; setSettings({ schedule: [...s.schedule, { id: 'b' + uuid().slice(0, 8), start: fromMin(st), end: fromMin(st + 60), title: 'Nový blok', type: 'other' }] }); }}>+ Přidat blok</button>
-        <${ConfirmDelete} label="Obnovit výchozí rozvrh" onYes=${() => setSettings({ schedule: DEFAULT_SCHEDULE })} />
+        <button class="btn ghost" onClick=${() => { const id = 't' + uuid().slice(0, 6); setSettings({ templates: [...tpls, { id, name: 'Nová šablona', blocks: (cur?.blocks || []).map((b) => ({ ...b, id: 'b' + uuid().slice(0, 8) })) }] }); setEdit(id); }}>Duplikovat jako novou</button>
+        ${tpls.length > 1 && html`<${ConfirmDelete} label="Smazat šablonu" onYes=${() => { const rest = tpls.filter((t) => t.id !== cur.id); setSettings({ templates: rest, weekMap: s.weekMap.map((w) => (w === cur.id ? rest[0].id : w)) }); setEdit(rest[0].id); }} />`}
+        <${ConfirmDelete} label="Obnovit výchozí šablony" onYes=${() => { setSettings({ templates: DEFAULT_TEMPLATES, weekMap: s.weekMap.map((w) => (DEFAULT_TEMPLATES.some((t) => t.id === w) ? w : 'main')) }); setEdit('main'); }} />
       </div>
-      <p class="muted small">Časy po půlnoci (do 4:00) patří ke stejnému dni. Změny platí od dneška, už odškrtnuté bloky zůstanou.</p>
+      <p class="muted small">Časy po půlnoci (do 4:00) patří ke stejnému dni. Změna šablony neovlivní už odškrtnuté bloky.</p>
+    </${Card}>
+
+    <${Card} title="Ranní rutina">
+      <ul class="rt-list">${s.routine.map((it, i) => html`<li class="rt-row">
+        <label class="sr" for=${'ri' + it.key}>Položka</label>
+        <input id=${'ri' + it.key} class="grow" value=${it.label} onBlur=${(e) => e.target.value.trim() && e.target.value !== it.label && setSettings({ routine: s.routine.map((x) => (x.key === it.key ? { ...x, label: e.target.value.trim() } : x)) })} />
+        <${Stepper} value=${it.timer || 0} step=${5} min=${0} max=${60} unit="min" onChange=${(v) => setSettings({ routine: s.routine.map((x) => (x.key === it.key ? { ...x, timer: v || undefined } : x)) })} />
+        <button class="x" aria-label="Posunout výš" disabled=${i === 0} onClick=${() => { const r = s.routine.slice(); [r[i - 1], r[i]] = [r[i], r[i - 1]]; setSettings({ routine: r }); }}>↑</button>
+        <button class="x" aria-label="Odebrat" onClick=${() => setSettings({ routine: s.routine.filter((x) => x.key !== it.key) })}>×</button>
+      </li>`)}</ul>
+      <form class="quick" onSubmit=${(e) => { e.preventDefault(); if (!newItem.trim()) return; setSettings({ routine: [...s.routine, { key: 'r' + uuid().slice(0, 6), label: newItem.trim() }] }); setNewItem(''); }}>
+        <label class="sr" for="rnew">Nová položka</label><input id="rnew" value=${newItem} onInput=${(e) => setNewItem(e.target.value)} placeholder="Nová položka rutiny…" />
+        <button class="btn" type="submit">Přidat</button>
+      </form>
+      <p class="muted small">Minuty = vestavěný časovač u položky (0 = bez časovače).</p>
+      <${ConfirmDelete} label="Obnovit výchozí rutinu" onYes=${() => setSettings({ routine: DEFAULT_ROUTINE })} />
     </${Card}>
 
     <${Card} title="Limity a cíle">
@@ -126,12 +177,4 @@ export function SettingsPage({ installPrompt }) {
       <button class="btn ghost" onClick=${signOut}>Odhlásit se</button>
     </${Card}>
   </${Page}>`;
-}
-
-const disp = (t) => (toMin(t) >= 1440 ? fromMin(toMin(t) - 1440) : t);
-/** Časy 00:00–03:59 ukládat jako 24:00–27:59, aby patřily ke stejnému dni. */
-function fixMid(v, r, isEnd) {
-  const m = toMin(v);
-  if (m < 240) { const x = m + 1440; return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`; }
-  return v;
 }

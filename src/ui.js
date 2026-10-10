@@ -59,22 +59,22 @@ export function Empty({ children }) { return html`<p class="empty">${children}</
 
 export function Stepper({ value, onChange, step = 1, min = 0, max = 9999, unit = '', id }) {
   return html`<div class="stepper" id=${id}>
-    <button type="button" aria-label="Méně" onClick=${() => { vibrate(8); onChange(Math.max(min, (value || 0) - step)); }}>−</button>
+    <button type="button" aria-label="Méně" onClick=${() => { vibrate(8); onChange(+Math.max(min, (value || 0) - step).toFixed(2)); }}>−</button>
     <span class="num">${value || 0}${unit && html`<small> ${unit}</small>`}</span>
-    <button type="button" aria-label="Více" onClick=${() => { vibrate(8); onChange(Math.min(max, (value || 0) + step)); }}>+</button>
+    <button type="button" aria-label="Více" onClick=${() => { vibrate(8); onChange(+Math.min(max, (value || 0) + step).toFixed(2)); }}>+</button>
   </div>`;
 }
 
 /** Jednoduchý sparkline / spojnicový graf v SVG. */
-export function LineChart({ points, height = 140, fmt = (v) => v, label }) {
+export function LineChart({ points, height = 140, fmt = (v) => v, label, min = 0 }) {
   if (!points.length) return null;
-  const W = 600, H = height, P = { l: 36, r: 12, t: 12, b: 22 };
-  const max = Math.max(1, ...points.map((p) => p.y));
+  const W = 420, H = height, P = { l: 38, r: 10, t: 10, b: 20 };
+  const max = Math.max(min + 1, ...points.map((p) => p.y));
   const x = (i) => P.l + (i / Math.max(1, points.length - 1)) * (W - P.l - P.r);
-  const y = (v) => H - P.b - (v / max) * (H - P.t - P.b);
+  const y = (v) => H - P.b - ((v - min) / (max - min)) * (H - P.t - P.b);
   const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.y).toFixed(1)}`).join('');
   const area = d + `L${x(points.length - 1)},${H - P.b}L${x(0)},${H - P.b}Z`;
-  const ticks = [0, max / 2, max];
+  const ticks = [min, (min + max) / 2, max];
   const last = points[points.length - 1];
   return html`<svg class="chart" viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${label}>
     ${ticks.map((t) => html`<g><line x1=${P.l} x2=${W - P.r} y1=${y(t)} y2=${y(t)} class="grid" />
@@ -88,11 +88,12 @@ export function LineChart({ points, height = 140, fmt = (v) => v, label }) {
 }
 
 export function Bars({ items, max, fmt = (v) => v, height = 120, cap }) {
-  const m = Math.max(1, max ?? Math.max(...items.map((i) => i.v)), cap || 0);
+  const m = Math.max(1, max ?? Math.max(...items.map((i) => i.v)), (cap || 0) * 1.2);
+  const every = items.length > 8 ? Math.ceil(items.length / 6) : 1;
   return html`<div class="bars" style=${`height:${height}px`}>
     ${cap && html`<div class="bars-cap" style=${`bottom:${(cap / m) * 100}%`}><span>strop</span></div>`}
-    ${items.map((it) => html`<div class="bar-col" title=${`${it.label}: ${fmt(it.v)}`}>
+    ${items.map((it, idx) => html`<div class="bar-col" title=${`${it.label}: ${fmt(it.v)}`}>
       <div class=${'bar' + (it.hi ? ' hi' : '') + (cap && it.v > cap ? ' over' : '')} style=${`height:${(it.v / m) * 100}%`}></div>
-      <span>${it.label}</span></div>`)}
+      <span>${(items.length - 1 - idx) % every === 0 ? it.label : ''}</span></div>`)}
   </div>`;
 }
