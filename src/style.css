@@ -437,3 +437,21 @@ input[type='time'], input[type='date'] { font-family: var(--mono); font-size: 14
 .suggest { border-color: var(--line-2); }
 .sg { display: grid !important; gap: 8px; }
 .habit-grid td { text-align: center; }
+
+/* ---------- nutkání ---------- */
+.urge-score { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.urge-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.urge-btns .btn { flex-direction: column; gap: 2px; min-height: 76px; }
+.urge-btns .btn b { font-family: var(--mono); font-size: 24px; font-weight: 500; line-height: 1; }
+.urge-btns .btn span { font-size: 13px; color: var(--muted); }
+.urge-win { border-color: var(--accent); background: var(--accent-soft); }
+.urge-win b { color: var(--accent); }
+.urge-lose { border-color: var(--warm); background: var(--warm-soft); }
+.urge-lose b { color: var(--warm); }
+.urge-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 12px 0 4px; }
+.uw-col { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.uw-col.hi span { color: var(--fg); font-weight: 600; }
+.uw-bars { height: 56px; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+.uw-bars i { width: 9px; min-height: 2px; border-radius: 3px 3px 0 0; }
+.uw-bars i.w { background: var(--accent); }
+.uw-bars i.l { background: var(--warm); }

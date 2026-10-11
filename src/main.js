@@ -10,7 +10,7 @@ import { addTask, logEnergy } from './logic.js';
 import { ReviewPage } from './review.js';
 import { startPushSync } from './push.js';
 import { addSocial } from './life.js';
-import { RoutinePage, BodyPage, InfluencePage, LeisurePage } from './life.js';
+import { RoutinePage, BodyPage, InfluencePage, LeisurePage, logUrge, urgesOf } from './life.js';
 import { ShutdownPage, IdeasPage, ReadingPage, JournalPage, addIdea } from './mind.js';
 import { StatsPage } from './stats.js';
 import { GoalsPage } from './goals.js';
@@ -135,6 +135,8 @@ function Quick({ close }) {
       </form>
       <div class="quick-grid">
         <button class="qbtn" onClick=${() => { setDaily('body', day, { waterMl: (b.waterMl || 0) + 250 }); done('+250 ml vody'); }}><b>+250 ml</b><span>voda · ${((b.waterMl || 0) / 1000).toLocaleString('cs-CZ')} l</span></button>
+        <button class="qbtn" onClick=${() => { logUrge(day, 'won'); done('+1 · nutkání poraženo'); }}><b>+1 nutkání</b><span>šel jsem proti · ${urgesOf(inf).won}</span></button>
+        <button class="qbtn" onClick=${() => { logUrge(day, 'lost'); done('−1 · podlehl jsem'); }}><b>−1 nutkání</b><span>podlehl jsem · ${urgesOf(inf).lost}</span></button>
         <button class="qbtn" onClick=${() => { addSocial(day, 'other', 15); done('+15 min sítě'); }}><b>+15 min</b><span>sociální sítě · ${inf.socialMin || 0}</span></button>
         <button class="qbtn" onClick=${() => { close(); go('blok'); }}><b>Blok</b><span>spustit časovač</span></button>
         <button class="qbtn" onClick=${() => { close(); go(new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'ritual' : 'zitra'); }}><b>${new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'Uzavřít den' : 'Plán zítřka'}</b><span>${new Date().getHours() >= 18 || new Date().getHours() < 4 ? 'večerní rituál' : 'naplánovat předem'}</span></button>

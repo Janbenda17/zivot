@@ -34,6 +34,9 @@ S.setDaily('body', d, { weight: 79.8 });
 S.setDaily('influence', d, { socialMin: 20 });
 S.setDaily('journal', d, { gratitude: ['a', '', 'c'] });
 S.add('influence_item', { text: 'Podcast', sign: '+' });
+const LF = await import(root + 'life.js');
+LF.logUrge(d, 'won'); LF.logUrge(d, 'won'); LF.logUrge(d, 'lost'); LF.logUrge(addDays(d, -1), 'lost'); LF.undoUrge(d);
+const uu = LF.urgesOf(S.daily('influence', d)); console.log('urges', uu.won, uu.lost, uu.log.length, S.daily('influence', d).socialMin);
 const pages = {
   today: (await import(root + 'today.js')).TodayPage,
   timer: (await import(root + 'timer.js')).TimerPage,

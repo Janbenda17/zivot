@@ -230,6 +230,48 @@ export function addSocial(day, app, x) {
   });
 }
 
+// Nutkání: +1 = šel jsem proti nutkání (výhra), −1 = podlehl jsem (prohra)
+export function urgesOf(inf) { const u = inf.urges || {}; return { won: u.won || 0, lost: u.lost || 0, log: u.log || [] }; }
+export function logUrge(day, r) {
+  setDaily('influence', day, (inf) => {
+    const u = urgesOf(inf);
+    return { ...inf, urges: { ...u, [r]: u[r] + 1, log: [...u.log, { r, at: new Date().toISOString() }] } };
+  });
+}
+export function undoUrge(day) {
+  setDaily('influence', day, (inf) => {
+    const u = urgesOf(inf);
+    const last = u.log[u.log.length - 1];
+    if (!last) return inf;
+    return { ...inf, urges: { ...u, [last.r]: Math.max(0, u[last.r] - 1), log: u.log.slice(0, -1) } };
+  });
+}
+
+function UrgeCard({ day }) {
+  const u = urgesOf(daily('influence', day));
+  const score = u.won - u.lost;
+  const week = Array.from({ length: 7 }, (_, i) => { const d = addDays(today(), i - 6); return { d, ...urgesOf(daily('influence', d)) }; });
+  const wW = week.reduce((a, x) => a + x.won, 0), wL = week.reduce((a, x) => a + x.lost, 0);
+  const max = Math.max(1, ...week.map((x) => Math.max(x.won, x.lost)));
+  const tap = (r) => { vibrate(r === 'won' ? 15 : [10, 40, 10]); logUrge(day, r); };
+  return html`<${Card} title="Nutkání" meta=${wW + wL ? `týden ${wW}:${wL}` : 'vyhrál / podlehl'}>
+    <div class="urge-score">
+      <div class=${'big-n' + (score < 0 ? ' over' : '')}>${score > 0 ? '+' : ''}${score}<small> skóre dne</small></div>
+      <span class="muted small">${u.won}× vyhrál · ${u.lost}× podlehl</span>
+    </div>
+    <div class="urge-btns">
+      <button class="btn urge-win" onClick=${() => tap('won')}><b>+1</b><span>Šel jsem proti</span></button>
+      <button class="btn urge-lose" onClick=${() => tap('lost')}><b>−1</b><span>Podlehl jsem</span></button>
+    </div>
+    ${u.log.length > 0 && html`<div class="row between"><span class="muted small">Naposledy ${u.log[u.log.length - 1].r === 'won' ? 'výhra' : 'prohra'} v ${hhmm(new Date(u.log[u.log.length - 1].at))}</span>
+      <button class="btn sm ghost" onClick=${() => undoUrge(day)}>Vrátit poslední</button></div>`}
+    <div class="urge-week" aria-label="Výhry a prohry posledních 7 dní">${week.map((x) => html`<div class=${'uw-col' + (x.d === day ? ' hi' : '')} title=${`${fmtDay(x.d)}: ${x.won} výher, ${x.lost} proher`}>
+      <div class="uw-bars"><i class="w" style=${`height:${(x.won / max) * 100}%`}></i><i class="l" style=${`height:${(x.lost / max) * 100}%`}></i></div>
+      <span>${DOW_S[parseDay(x.d).getDay()]}</span></div>`)}</div>
+    ${wW + wL > 0 && html`<p class="muted small">Za 7 dní jsi nutkání porazil v ${Math.round((wW / (wW + wL)) * 100)} % případů.</p>`}
+  </${Card}>`;
+}
+
 export function InfluencePage() {
   const store = useStore();
   const [day, setDay] = useState(today());
@@ -248,6 +290,7 @@ export function InfluencePage() {
   const [sign, setSign] = useState('+');
   const bars = Array.from({ length: 7 }, (_, i) => { const d = addDays(today(), i - 6); return { label: DOW_S[parseDay(d).getDay()], v: daily('influence', d).socialMin || 0, hi: d === day }; });
   return html`<${Page} title="Vlivy" action=${html`<${DayPicker} day=${day} setDay=${setDay} />`}>
+    <${UrgeCard} day=${day} />
     <${Card} title="Sociální sítě" meta=${`limit ${lim} min`}>
       <div class=${'big-n' + (m > lim ? ' over' : '')}>${m}<small> min</small></div>
       <div class="prog"><i class=${m > lim ? 'over' : ''} style=${`width:${Math.min(100, (m / Math.max(lim, 1)) * 100)}%`}></i></div>
