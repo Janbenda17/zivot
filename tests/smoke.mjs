@@ -25,6 +25,7 @@ S.add('book', { title: 'Kniha', chapters: [{ n: 1, plan: d, read: false, answers
 S.add('goal', { horizon: 'long', title: 'Dlouhý', why: 'proto' });
 S.add('goal', { horizon: 'week', title: 'Gym', habit: 'gym', target: 4, period: (await import(root+'util.js')).weekStart(d) });
 S.add('leisure_idea', { text: 'Výlet' });
+S.add('will', { v: 1, text: 'Studený sud' }, d); S.add('will', { v: 1, text: 'Studený sud' }, addDays(d, -1)); S.add('will', { v: -1, text: 'Scrollování' }, d);
 const L = await import(root + 'logic.js');
 L.addTask('Úkol A', d); const tb = L.addTask('Úkol B', addDays(d, 1)); L.addTask('Starý', addDays(d, -2)); L.addTask('Někdy', null);
 S.setDaily('daylog', addDays(d, 1), { mainTask: 'Zítra hlavní', template: 'light', planned: true });
@@ -50,6 +51,7 @@ const pages = {
   settings: (await import(root + 'settings.js')).SettingsPage,
   plan: (await import(root + 'plan.js')).PlanPage,
   review: (await import(root + 'review.js')).ReviewPage,
+  will: (await import(root + 'will.js')).WillPage,
 };
 for (const [k, P] of Object.entries(pages)) {
   try { const out = render(html`<${P} />`); console.log(k, 'OK', out.length); }
@@ -66,5 +68,5 @@ const T = await import(root + 'timer.js');
 T.startTimer({ type: 'work', goal: 'x', plannedMin: 50 });
 console.log('plancheck', JSON.stringify((({overlaps, deepPlanned, sleepH, wake}) => ({o: overlaps.length, deepPlanned, sleepH, wake}))(L.planCheck(addDays(d, 1)))));
 try { console.log('running', render(html`<${pages.timer} />`).includes('Vyrušení')); } catch (e) { console.log('running FAIL', e.message); }
-for (const k of ["plan","today"]) console.log("\n=="+k, render(html`<${pages[k]} />`).replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,600));
+for (const k of ["will"]) console.log("\n=="+k, render(html`<${pages[k]} />`).replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,600));
 process.exit(0);

@@ -5,6 +5,7 @@ import { daily, setDaily, useStore } from './store.js';
 import { dayBlocks, deepMin, setBlock, moveBlockStart, tasksFor, toggleTask, chaptersDue, removeExtraBlock, templateFor, logEnergy, energyInSlot } from './logic.js';
 import { ENERGY_SLOTS } from './push.js';
 import { reviewDue } from './review.js';
+import { willFor, willScore } from './will.js';
 import { Scale } from './ui.js';
 import { useStore as _us } from './store.js';
 import { BLOCK_TYPES } from './defaults.js';
@@ -77,6 +78,7 @@ export function TodayPage() {
     <${EnergyPrompt} day=${day} nm=${nm} />
     ${reviewDue() && html`<button class="banner" onClick=${() => go('revize')}><span>Týdenní revize: 10 minut na ohlédnutí a cíle</span><b>›</b></button>`}
 
+    <${WillLine} day=${day} />
     <${Overdue} />
     <${DayTasks} day=${day} blocks=${blocks} title="Úkoly dne" />
 
@@ -202,4 +204,12 @@ function EnergyPrompt({ day, nm }) {
   if (!slot || energyInSlot(day, slot.from, slot.to)) return null;
   return html`<div class="card energy-card"><div class="card-h"><h2>Jak máš energii ${slot.label}?</h2></div>
     <${Scale} value=${null} onChange=${(v) => v && logEnergy(day, v)} labels=${['vyčerpaný', 'unavený', 'ok', 'svěží', 'plný energie']} /></div>`;
+}
+
+function WillLine({ day }) {
+  const list = willFor(day);
+  const sc = willScore(day);
+  return html`<button class="banner soft will-line" onClick=${() => go('skore')}>
+    <span>+1 / −1 dnes${list.length ? ` · ${list.filter((r) => r.data.v > 0).length}× +1, ${list.filter((r) => r.data.v < 0).length}× −1` : ' · překonal ses v něčem?'}</span>
+    <b class=${sc > 0 ? 'ok' : sc < 0 ? 'late' : ''}>${sc > 0 ? '+' + sc : sc < 0 ? '−' + Math.abs(sc) : '0'}</b></button>`;
 }

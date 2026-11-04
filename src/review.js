@@ -52,7 +52,7 @@ export function ReviewPage() {
       <tbody>
         ${[['Hluboká práce', a.deep, b.deep, (v) => f1(v) + ' h', 1], ['⌀ kvalita bloků', a.quality, b.quality, f1, 1], ['Vyrušení', a.interruptions, b.interruptions, f1, -1],
            ['⌀ spánek', a.sleep, b.sleep, (v) => f1(v) + (v == null ? '' : ' h'), 1], ['⌀ nálada', a.mood, b.mood, f1, 1], ['Sociální sítě', a.social, b.social, (v) => v + ' min', -1],
-           ['Hotové úkoly', a.tasks, b.tasks, (v) => v, 1]].map(([l, x, y, f, dir]) => {
+           ['Hotové úkoly', a.tasks, b.tasks, (v) => v, 1], ['+1 / −1 skóre', a.will, b.will, (v) => (v > 0 ? '+' + v : v), 1]].map(([l, x, y, f, dir]) => {
           const cls = x != null && y != null && x !== y ? ((x - y) * dir > 0 ? 'up' : 'down') : '';
           return html`<tr><th>${l}</th><td class=${cls}>${f(x)}</td><td class="muted">${f(y)}</td></tr>`;
         })}

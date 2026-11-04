@@ -73,6 +73,7 @@ export function weekData(ws) {
     shutdown: days.filter((d) => habitValue('shutdown', d)).length,
     tasks: days.reduce((a, d) => a + tasksFor(d).filter((t) => t.data.done).length, 0),
     planned: days.filter((d) => daily('daylog', d).planned).length,
+    will: all('will').filter((r) => r.day >= ws && r.day <= addDays(ws, 6)).reduce((x, r) => x + (r.data.v || 0), 0),
   };
 }
 
@@ -92,6 +93,7 @@ function WeekOverview({ ws }) {
     ['Dny uzavřeny', a.shutdown, b.shutdown, (v) => v + '×', 1],
     ['Dny naplánované předem', a.planned, b.planned, (v) => v + '×', 1],
     ['Hotové úkoly', a.tasks, b.tasks, (v) => v + '', 1],
+    ['+1 / −1 skóre', a.will, b.will, (v) => (v > 0 ? '+' + v : v + ''), 1],
   ];
   return html`<${Card} title="Týdenní přehled" meta=${`od ${fmtDay(ws)}`}>
     <div class="tbl-wrap"><table class="tbl wide">

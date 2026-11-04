@@ -8,6 +8,7 @@ import { TimerPage, useTimer, remainingSec, isTicking } from './timer.js';
 import { PlanPage } from './plan.js';
 import { addTask, logEnergy } from './logic.js';
 import { ReviewPage } from './review.js';
+import { WillPage, WillAdd } from './will.js';
 import { startPushSync } from './push.js';
 import { addSocial } from './life.js';
 import { RoutinePage, BodyPage, InfluencePage, LeisurePage } from './life.js';
@@ -22,6 +23,7 @@ import './style.css';
 const MODULES = [
   { r: 'dnes', l: 'Dnes', ic: 'sun' },
   { r: 'zitra', l: 'Plán zítřka', ic: 'cal' },
+  { r: 'skore', l: '+1 / −1', ic: 'pm' },
   { r: 'blok', l: 'Hluboký blok', ic: 'timer' },
   { r: 'rutina', l: 'Ranní rutina', ic: 'dawn' },
   { r: 'telo', l: 'Tělo', ic: 'body' },
@@ -51,6 +53,7 @@ const ICONS = {
   target: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 12h.01',
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1.3z',
   plus: 'M12 5v14M5 12h14',
+  pm: 'M4 8h6M7 5v6M14 16h6M19 4L5 20',
   review: 'M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4M12 8v4l3 2',
   cal: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4M8 14h3M8 17h6',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
@@ -133,6 +136,7 @@ function Quick({ close }) {
         <input id="qidea" value=${v} onInput=${(e) => setV(e.target.value)} placeholder=${mode === 'idea' ? 'Nápad… (#štítek)' : 'Úkol…'} autofocus enterkeyhint="send" />
         <button class="btn primary" type="submit">Uložit</button>
       </form>
+      <div class="field"><span class="lbl">+1 / −1</span><${WillAdd} compact onDone=${(v) => done(v > 0 ? '+1 zapsáno' : '−1 zapsáno')} /></div>
       <div class="quick-grid">
         <button class="qbtn" onClick=${() => { setDaily('body', day, { waterMl: (b.waterMl || 0) + 250 }); done('+250 ml vody'); }}><b>+250 ml</b><span>voda · ${((b.waterMl || 0) / 1000).toLocaleString('cs-CZ')} l</span></button>
         <button class="qbtn" onClick=${() => { addSocial(day, 'other', 15); done('+15 min sítě'); }}><b>+15 min</b><span>sociální sítě · ${inf.socialMin || 0}</span></button>
@@ -186,6 +190,7 @@ function App() {
   let page;
   switch (route) {
     case 'zitra': page = html`<${PlanPage} />`; break;
+    case 'skore': page = html`<${WillPage} />`; break;
     case 'revize': page = html`<${ReviewPage} />`; break;
     case 'blok': page = html`<${TimerPage} preset=${takePayload()} />`; break;
     case 'rutina': page = html`<${RoutinePage} />`; break;
