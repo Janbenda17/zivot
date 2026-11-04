@@ -30,6 +30,7 @@ const state = {
 let version = 0;
 const listeners = new Set();
 function emit() { version++; listeners.forEach((f) => f(version)); }
+export function dataVersion() { return version; }
 
 /** Odběr změn mimo komponenty (např. synchronizace upozornění). */
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -168,15 +169,19 @@ export async function refresh() {
 }
 
 // ---------- API ----------
-export function all(kind) {
-  const out = [];
-  for (const r of state.rows.values()) if (r.kind === kind) out.push(r);
-  return out;
+// Index pro rychlé hledání (přestaví se jen při změně dat).
+let idxVer = -1, byKind = new Map(), byDay = new Map();
+function index() {
+  if (idxVer === version) return;
+  byKind = new Map(); byDay = new Map();
+  for (const r of state.rows.values()) {
+    let a = byKind.get(r.kind); if (!a) byKind.set(r.kind, (a = [])); a.push(r);
+    if (r.day) byDay.set(r.kind + '|' + r.day, r);
+  }
+  idxVer = version;
 }
-export function dailyRow(kind, day) {
-  for (const r of state.rows.values()) if (r.kind === kind && r.day === day) return r;
-  return null;
-}
+export function all(kind) { index(); return (byKind.get(kind) || []).slice(); }
+export function dailyRow(kind, day) { index(); return byDay.get(kind + '|' + day) || null; }
 export function daily(kind, day) { return dailyRow(kind, day)?.data || {}; }
 export function setDaily(kind, day, patch) {
   let r = dailyRow(kind, day);

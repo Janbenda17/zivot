@@ -5,7 +5,8 @@ import { daily, setDaily, useStore } from './store.js';
 import { dayBlocks, deepMin, setBlock, moveBlockStart, tasksFor, toggleTask, chaptersDue, removeExtraBlock, templateFor, logEnergy, energyInSlot } from './logic.js';
 import { ENERGY_SLOTS } from './push.js';
 import { reviewDue } from './review.js';
-import { willFor, willScore } from './will.js';
+import { willFor, willScore, addWill } from './will.js';
+import { dayXP, DAY_GOAL } from './xp.js';
 import { Scale } from './ui.js';
 import { useStore as _us } from './store.js';
 import { BLOCK_TYPES } from './defaults.js';
@@ -66,10 +67,30 @@ export function TodayPage() {
     setResched(false);
   };
 
-  return html`<${Page} title=${fmtDay(day, true)} sub=${`${templateFor(day).name} · ${doneN}/${blocks.length} bloků · hluboká práce ${fmtDur(deepMin(day))}`}
-      action=${html`<button class="btn sm" onClick=${() => go('zitra')}>Zítra ›</button>`}>
+  const [full, setFull] = useState(false);
+  const xp = dayXP(day).total;
+  // kompaktní osa: od aktuálního (nebo posledního hotového) bloku dál, jinak celý den
+  const curIdx = Math.max(0, blocks.findIndex((b) => b.end > nm) - 1);
+  const shown = full ? blocks : blocks.slice(curIdx, curIdx + 5);
+  const hiddenBefore = full ? 0 : curIdx, hiddenAfter = full ? 0 : Math.max(0, blocks.length - curIdx - 5);
+
+  return html`<section class="page today">
+    <header class="today-h">
+      <div class="th-l">
+        <span class="th-eyebrow">${templateFor(day).name}${log.planned ? ' · naplánováno předem' : ''}</span>
+        <h1>${fmtDay(day, true)}</h1>
+        <span class="th-sub">${doneN}/${blocks.length} bloků · ${fmtDur(deepMin(day))} hluboké práce</span>
+      </div>
+      <button class="xp-ring" onClick=${() => go('prehled')} aria-label=${`Dnešní body ${xp} z ${DAY_GOAL}`}>
+        <${Ring} pct=${Math.max(0, Math.min(1, xp / DAY_GOAL))} />
+        <span class="xr-n">${xp}</span><span class="xr-l">bodů</span>
+      </button>
+    </header>
+
     ${isTicking(t) && html`<button class="banner" onClick=${() => go('blok')}>
       <span>${t.phase === 'break' ? 'Pauza' : 'Běží blok'}${t.goal && t.phase !== 'break' ? ': ' + t.goal : ''}</span><b>${remainingSec(t) >= 0 ? fmtClock(remainingSec(t)) : '+' + fmtClock(-remainingSec(t))}</b></button>`}
+
+    <${QuickRow} day=${day} nm=${nm} />
 
     <${MainTask} day=${day} value=${log.mainTask} />
     ${log.intention && html`<p class="intention">„${log.intention}“</p>`}
@@ -78,7 +99,6 @@ export function TodayPage() {
     <${EnergyPrompt} day=${day} nm=${nm} />
     ${reviewDue() && html`<button class="banner" onClick=${() => go('revize')}><span>Týdenní revize: 10 minut na ohlédnutí a cíle</span><b>›</b></button>`}
 
-    <${WillLine} day=${day} />
     <${Overdue} />
     <${DayTasks} day=${day} blocks=${blocks} title="Úkoly dne" />
 
@@ -86,13 +106,13 @@ export function TodayPage() {
       <span>Čtení: ${reading[0].book.data.title}, kapitola ${reading[0].ch.n}${reading.length > 1 ? ` (+${reading.length - 1})` : ''}</span><b>›</b></button>`}
 
     ${nm >= 18 * 60 && html`<button class=${'banner ' + (tPlanned ? 'soft' : '')} onClick=${() => go('zitra')}>
-      <span>${tPlanned ? 'Zítřek je naplánovaný ✓' : 'Naplánuj zítřek, ať ráno nemusíš přemýšlet'}</span><b>›</b></button>`}
+      <span>${tPlanned ? 'Zítřek je naplánovaný ✓' : 'Naplánuj zítřek, ať ráno nemusíš přemýšlet (+10 bodů)'}</span><b>›</b></button>`}
 
-    <div class="row between">
-      <h2 class="h2">Časová osa</h2>
+    <div class="sec-h">
+      <h2>Časová osa</h2>
       <div class="row">
         <button class="btn sm ghost" onClick=${() => { setAdding(!adding); setResched(false); }} aria-expanded=${adding}>+ Blok</button>
-        <button class="btn sm" onClick=${() => { setResched(!resched); setAdding(false); }} aria-expanded=${resched}>Přeplánovat</button>
+        <button class="btn sm ghost" onClick=${() => { setResched(!resched); setAdding(false); }} aria-expanded=${resched}>Přeplánovat</button>
       </div>
     </div>
     ${adding && html`<${AddBlock} day=${day} onDone=${() => setAdding(false)} />`}
@@ -107,17 +127,20 @@ export function TodayPage() {
         <button class="btn ghost" onClick=${reset}>Vrátit podle rozvrhu</button>
       </div></div>`}
 
+    <div class="card tl-card">
+    ${hiddenBefore > 0 && html`<button class="tl-more" onClick=${() => setFull(true)}>Dříve dnes · ${hiddenBefore} ${hiddenBefore === 1 ? 'blok' : hiddenBefore < 5 ? 'bloky' : 'bloků'}</button>`}
     <ol class="timeline">
-      ${blocks.map((b, i) => {
+      ${shown.map((b) => {
+        const i = blocks.indexOf(b);
         const prev = blocks[i - 1];
-        const gap = prev ? b.start - prev.end : 0;
+        const gap = prev && shown.includes(prev) ? b.start - prev.end : 0;
         const isCur = b === cur;
         const past = b.end <= nm;
         const bt = tasks.filter((x) => x.data.blockId === b.id);
         return html`
           ${gap >= 30 && html`<li class="gap"><span class="tl-time">${fromMin(prev.end)}</span><span>volno · ${fmtDur(gap)}</span></li>`}
           ${gap < 0 && html`<li class="gap warn-t"><span class="tl-time"></span><span>překryv ${fmtDur(-gap)}</span></li>`}
-          <li class=${`tl ${b.status} ${isCur ? 'cur' : ''} ${past && b.status === 'pending' ? 'missed' : ''}`}>
+          <li class=${`tl ${b.status} ${isCur ? 'cur' : ''} ${past && b.status === 'pending' ? 'missed' : ''} ${b.deep ? 'deep' : ''}`}>
             <button class="tl-main" onClick=${() => setOpen(open === b.id ? null : b.id)} aria-expanded=${open === b.id}>
               <span class="tl-time">${fromMin(b.start)}<small>${fromMin(b.end)}</small></span>
               <span class="tl-body">
@@ -131,7 +154,51 @@ export function TodayPage() {
           </li>`;
       })}
     </ol>
-  </${Page}>`;
+    ${hiddenAfter > 0 && html`<button class="tl-more" onClick=${() => setFull(true)}>Zbytek dne · ${hiddenAfter} ${hiddenAfter === 1 ? 'blok' : hiddenAfter < 5 ? 'bloky' : 'bloků'}</button>`}
+    ${full && blocks.length > 5 && html`<button class="tl-more" onClick=${() => setFull(false)}>Jen nejbližší bloky</button>`}
+    </div>
+  </section>`;
+}
+
+/** Kruh pokroku. */
+export function Ring({ pct, size = 64, stroke = 6, cls = '' }) {
+  const r = (size - stroke) / 2, C = 2 * Math.PI * r;
+  return html`<svg class=${'ring-svg ' + cls} viewBox=${`0 0 ${size} ${size}`} width=${size} height=${size} aria-hidden="true">
+    <circle cx=${size / 2} cy=${size / 2} r=${r} class="rg-bg" stroke-width=${stroke} />
+    <circle cx=${size / 2} cy=${size / 2} r=${r} class="rg-fg" stroke-width=${stroke} stroke-dasharray=${`${C * pct} ${C}`} transform=${`rotate(-90 ${size / 2} ${size / 2})`} />
+  </svg>`;
+}
+
+/** Rychlé akce jedním klepnutím. */
+function QuickRow({ day, nm }) {
+  const { settings } = _us();
+  const b = daily('body', day);
+  const r = daily('routine', day);
+  const rn = settings.routine.filter((it) => r[it.key]).length;
+  const water = b.waterMl || 0;
+  const sc = willScore(day);
+  const [will, setWill] = useState(null);
+  const [txt, setTxt] = useState('');
+  const save = (e) => { e.preventDefault(); if (!txt.trim()) return; addWill(will, txt); setTxt(''); setWill(null); };
+  const morning = nm < 13 * 60 && !b.sleep?.wake;
+  return html`<div class="qrow-wrap">
+    <div class="qrow" role="group" aria-label="Rychlé zápisy">
+      <button class=${'qa' + (water >= settings.waterGoalMl ? ' done' : '')} onClick=${() => { vibrate(); setDaily('body', day, { waterMl: water + 250 }); }}>
+        <b>+250 ml</b><span>voda ${(water / 1000).toLocaleString('cs-CZ')}/${settings.waterGoalMl / 1000} l</span></button>
+      <button class=${'qa' + (rn === settings.routine.length ? ' done' : '')} onClick=${() => go('rutina')}>
+        <b>${rn}/${settings.routine.length}</b><span>rutina</span></button>
+      <button class=${'qa plus' + (will === 1 ? ' on' : '')} onClick=${() => setWill(will === 1 ? null : 1)}><b>+1</b><span>překonal jsem se</span></button>
+      <button class=${'qa minus' + (will === -1 ? ' on' : '')} onClick=${() => setWill(will === -1 ? null : -1)}><b>−1</b><span>podlehl jsem</span></button>
+      ${morning && html`<button class="qa" onClick=${() => { const n = new Date(); setDaily('body', day, (x) => ({ ...x, sleep: { ...(x.sleep || {}), wake: `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}` } })); vibrate(); }}><b>Vstávám</b><span>zapsat probuzení</span></button>`}
+      <button class="qa" onClick=${() => go('blok')}><b>Blok</b><span>spustit časovač</span></button>
+    </div>
+    ${will && html`<form class="quick will-inline" onSubmit=${save}>
+      <label class="sr" for="qwill">Důvod</label>
+      <input id="qwill" value=${txt} onInput=${(e) => setTxt(e.target.value)} autofocus enterkeyhint="done" autocomplete="off" placeholder=${will > 0 ? 'Co jsi překonal?' : 'Čemu jsi podlehl?'} />
+      <button class=${'btn ' + (will > 0 ? 'primary' : 'warmbtn')} type="submit">${will > 0 ? '+1' : '−1'}</button>
+    </form>`}
+    ${sc !== 0 && !will && html`<span class="qrow-note">Dnes +1/−1: <b class=${sc > 0 ? 'ok' : 'late'}>${sc > 0 ? '+' + sc : '−' + Math.abs(sc)}</b></span>`}
+  </div>`;
 }
 
 function MainTask({ day, value }) {

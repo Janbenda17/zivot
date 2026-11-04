@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, today, vibrate, addDays } from './util.js';
 import { useStore, initAuth, sb, setDaily, daily, getState } from './store.js';
 import { useRoute, go, takePayload } from './nav.js';
@@ -17,27 +17,30 @@ import { StatsPage } from './stats.js';
 import { GoalsPage } from './goals.js';
 import { SettingsPage, startNotifier } from './settings.js';
 import { Scale } from './ui.js';
+import { PrehledPage } from './prehled.js';
+import { UkolyPage } from './tasks.js';
+import { dayXP } from './xp.js';
 import './style.css';
 
 
-const MODULES = [
-  { r: 'dnes', l: 'Dnes', ic: 'sun' },
-  { r: 'zitra', l: 'Plán zítřka', ic: 'cal' },
-  { r: 'skore', l: '+1 / −1', ic: 'pm' },
-  { r: 'blok', l: 'Hluboký blok', ic: 'timer' },
-  { r: 'rutina', l: 'Ranní rutina', ic: 'dawn' },
-  { r: 'telo', l: 'Tělo', ic: 'body' },
-  { r: 'ritual', l: 'Rituál ukončení', ic: 'moon' },
-  { r: 'napady', l: 'Nápady', ic: 'spark' },
-  { r: 'cteni', l: 'Čtení', ic: 'book' },
-  { r: 'denik', l: 'Deník', ic: 'pen' },
-  { r: 'vlivy', l: 'Vlivy', ic: 'wave' },
-  { r: 'volno', l: 'Volný čas', ic: 'leaf' },
-  { r: 'revize', l: 'Týdenní revize', ic: 'review' },
-  { r: 'statistiky', l: 'Statistiky', ic: 'chart' },
-  { r: 'cile', l: 'Cíle', ic: 'target' },
-  { r: 'nastaveni', l: 'Nastavení', ic: 'gear' },
+// Čtyři záložky, každá s podnabídkou.
+const GROUPS = [
+  { id: 'dnes', l: 'Dnes', ic: 'sun', routes: [['dnes', 'Den'], ['blok', 'Hluboký blok'], ['ritual', 'Večer']] },
+  { id: 'plan', l: 'Plán', ic: 'cal', routes: [['zitra', 'Zítřek'], ['ukoly', 'Úkoly'], ['cile', 'Cíle'], ['revize', 'Revize týdne']] },
+  { id: 'ja', l: 'Já', ic: 'user', routes: [['rutina', 'Rutina'], ['telo', 'Tělo'], ['skore', '+1 / −1'], ['denik', 'Deník'], ['napady', 'Nápady'], ['cteni', 'Čtení'], ['vlivy', 'Sítě a vlivy'], ['volno', 'Volno']] },
+  { id: 'prehled', l: 'Přehled', ic: 'chart', routes: [['prehled', 'Body a odznaky'], ['statistiky', 'Statistiky'], ['nastaveni', 'Nastavení']] },
 ];
+const groupOf = (r) => GROUPS.find((g) => g.routes.some(([x]) => x === r)) || GROUPS[0];
+const LAST = 'zivot.lastRoute.';
+function rememberRoute(r) { try { localStorage.setItem(LAST + groupOf(r).id, r); } catch {} }
+function lastRoute(g) { try { const r = localStorage.getItem(LAST + g.id); if (r && g.routes.some(([x]) => x === r)) return r; } catch {} return g.routes[0][0]; }
+
+function SubNav({ route }) {
+  const g = groupOf(route);
+  if (g.routes.length < 2) return null;
+  return html`<nav class="subnav" aria-label=${g.l}>${g.routes.map(([r, l]) => html`<a href=${'#/' + r} class=${r === route ? 'on' : ''} aria-current=${r === route ? 'page' : null}>${l}</a>`)}</nav>`;
+}
+
 const ICONS = {
   sun: 'M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
   timer: 'M12 8v5l3 2M9 2h6M12 22a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
@@ -57,6 +60,7 @@ const ICONS = {
   review: 'M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4M12 8v4l3 2',
   cal: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4M8 14h3M8 17h6',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
 };
 const Icon = ({ n }) => html`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d=${ICONS[n]} /></svg>`;
 
@@ -151,12 +155,6 @@ function Quick({ close }) {
 }
 
 // ---------- shell ----------
-function More() {
-  return html`<section class="page"><header class="page-h"><h1>Moduly</h1></header>
-    <div class="modules">${MODULES.filter((m) => !['dnes', 'blok', 'denik'].includes(m.r)).map((m) => html`<a class="module" href=${'#/' + m.r}><${Icon} n=${m.ic} /><span>${m.l}</span></a>`)}</div>
-  </section>`;
-}
-
 function App() {
   const store = useStore();
   const route = useRoute();
@@ -183,6 +181,20 @@ function App() {
     else if (a === 'plan') go('zitra');
   }, [store.user, store.loaded]);
 
+  useEffect(() => rememberRoute(route), [route]);
+  // +N bodů po každém zápisu, který přidá body
+  const [xpToast, setXpToast] = useState(null);
+  const xpNow = store.user && store.loaded ? dayXP(today()).total : null;
+  const xpPrev = useRef(null);
+  useEffect(() => {
+    if (xpNow == null) return;
+    if (xpPrev.current != null && xpNow > xpPrev.current) {
+      const k = Date.now(); setXpToast({ n: xpNow - xpPrev.current, k });
+      setTimeout(() => setXpToast((x) => (x && x.k === k ? null : x)), 1800);
+    }
+    xpPrev.current = xpNow;
+  }, [xpNow]);
+
   if (store.user === undefined) return html`<div class="splash"></div>`;
   if (!store.user || recovery) return html`<${Auth} recovery=${recovery} />`;
   if (!store.loaded) return html`<div class="splash"><span class="brand-mark"></span></div>`;
@@ -204,30 +216,33 @@ function App() {
     case 'statistiky': page = html`<${StatsPage} />`; break;
     case 'cile': page = html`<${GoalsPage} />`; break;
     case 'nastaveni': page = html`<${SettingsPage} installPrompt=${installPrompt} />`; break;
-    case 'vice': page = html`<${More} />`; break;
+    case 'prehled': page = html`<${PrehledPage} />`; break;
+    case 'ukoly': page = html`<${UkolyPage} />`; break;
     default: page = html`<${TodayPage} />`;
   }
-  const inMore = !['dnes', 'blok', 'denik'].includes(route);
+  const grp = groupOf(route);
   return html`<div class="app">
-    <nav class="side" aria-label="Moduly">
+    <nav class="side" aria-label="Navigace">
       <div class="brand"><span class="brand-mark"></span>Život</div>
-      ${MODULES.map((m) => html`<a href=${'#/' + m.r} class=${route === m.r ? 'on' : ''} aria-current=${route === m.r ? 'page' : null}><${Icon} n=${m.ic} />${m.l}
-        ${m.r === 'blok' && isTicking(t) && html`<small class="side-t">●</small>`}</a>`)}
+      ${GROUPS.map((g) => html`<div class="side-g">
+        <span class=${'side-gh' + (g === grp ? ' on' : '')}><${Icon} n=${g.ic} />${g.l}</span>
+        ${g.routes.map(([r, l]) => html`<a href=${'#/' + r} class=${route === r ? 'on' : ''} aria-current=${route === r ? 'page' : null}>${l}${r === 'blok' && isTicking(t) ? html`<small class="side-t">●</small>` : ''}</a>`)}
+      </div>`)}
       <button class="btn primary side-quick" onClick=${() => setQuick(true)}><${Icon} n="plus" /> Rychlý zápis</button>
     </nav>
     <main class="main">
       ${(store.error || !store.online) && html`<div class="status">${!store.online ? 'Offline · změny se uloží po připojení' : store.error}</div>`}
+      <${SubNav} route=${route} />
       ${page}
     </main>
     <nav class="tabbar" aria-label="Hlavní navigace">
-      <a href="#/dnes" class=${route === 'dnes' ? 'on' : ''}><${Icon} n="sun" /><span>Dnes</span></a>
-      <a href="#/blok" class=${route === 'blok' ? 'on' : ''}><${Icon} n="timer" /><span>${isTicking(t) ? (remainingSec(t) > 0 ? Math.ceil(remainingSec(t) / 60) + ' min' : t.phase === 'break' ? 'konec' : 'flow') : 'Blok'}</span></a>
+      ${GROUPS.slice(0, 2).map((g) => html`<a href=${'#/' + (g === grp ? g.routes[0][0] : lastRoute(g))} class=${g === grp ? 'on' : ''}><${Icon} n=${g.ic} /><span>${g.id === 'dnes' && isTicking(t) ? (remainingSec(t) > 0 ? Math.ceil(remainingSec(t) / 60) + ' min' : t.phase === 'break' ? 'pauza' : 'flow') : g.l}</span>${g.id === 'dnes' && isTicking(t) ? html`<i class="tab-dot"></i>` : ''}</a>`)}
       <button class="tab-plus" aria-label="Rychlý zápis" onClick=${() => { vibrate(); setQuick(true); }}><${Icon} n="plus" /></button>
-      <a href="#/denik" class=${route === 'denik' ? 'on' : ''}><${Icon} n="pen" /><span>Deník</span></a>
-      <a href="#/vice" class=${inMore ? 'on' : ''}><${Icon} n="more" /><span>Více</span></a>
+      ${GROUPS.slice(2).map((g) => html`<a href=${'#/' + (g === grp ? g.routes[0][0] : lastRoute(g))} class=${g === grp ? 'on' : ''}><${Icon} n=${g.ic} /><span>${g.l}</span></a>`)}
     </nav>
     ${quick && html`<${Quick} close=${() => setQuick(false)} />`}
     ${toast && html`<div class="app-toast" role="status">${toast}</div>`}
+    ${xpToast && html`<div class="xp-toast" role="status" key=${xpToast.k}>+${xpToast.n} bodů</div>`}
   </div>`;
 }
 

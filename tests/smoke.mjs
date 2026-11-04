@@ -52,6 +52,8 @@ const pages = {
   plan: (await import(root + 'plan.js')).PlanPage,
   review: (await import(root + 'review.js')).ReviewPage,
   will: (await import(root + 'will.js')).WillPage,
+  prehled: (await import(root + 'prehled.js')).PrehledPage,
+  ukoly: (await import(root + 'tasks.js')).UkolyPage,
 };
 for (const [k, P] of Object.entries(pages)) {
   try { const out = render(html`<${P} />`); console.log(k, 'OK', out.length); }
@@ -68,5 +70,6 @@ const T = await import(root + 'timer.js');
 T.startTimer({ type: 'work', goal: 'x', plannedMin: 50 });
 console.log('plancheck', JSON.stringify((({overlaps, deepPlanned, sleepH, wake}) => ({o: overlaps.length, deepPlanned, sleepH, wake}))(L.planCheck(addDays(d, 1)))));
 try { console.log('running', render(html`<${pages.timer} />`).includes('Vyrušení')); } catch (e) { console.log('running FAIL', e.message); }
-for (const k of ["will"]) console.log("\n=="+k, render(html`<${pages[k]} />`).replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,600));
+const X = await import(root + "xp.js"); console.log("xp", JSON.stringify(X.dayXP(d)), JSON.stringify(X.xpSummary().level));
+for (const k of ["prehled"]) console.log("\n=="+k, render(html`<${pages[k]} />`).replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,600));
 process.exit(0);

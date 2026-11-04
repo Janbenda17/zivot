@@ -87,7 +87,7 @@ export function RoutinePage() {
 
   return html`<${Page} title="Ranní rutina" sub=${`${n}/${items.length} · série ${s} ${dnu(s)}`} action=${html`<${DayPicker} day=${day} setDay=${setDay} />`}>
     ${r.wakeAt ? html`<p class="hint">Vstal jsi v ${r.wakeAt}.</p>`
-      : day === today() && html`<button class="btn big" onClick=${wakeNow}>Vstávám (${hhmm()})</button>`}
+      : day === today() && new Date().getHours() >= 4 && new Date().getHours() < 14 && html`<button class="btn big" onClick=${wakeNow}>Vstávám (${hhmm()})</button>`}
     <${Card}>
       <div class="checks">${items.map((it) => html`<${Check} on=${r[it.key]} onClick=${() => toggle(it)} label=${it.label} sub=${sub(it)}>
         ${it.timer && !r[it.key] && html`<span class="btn sm" role="button" tabindex="0" onClick=${(e) => { e.stopPropagation(); setRun(run?.key === it.key ? null : { key: it.key, end: Date.now() + it.timer * 60000, min: it.timer }); }}>

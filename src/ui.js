@@ -87,11 +87,11 @@ export function LineChart({ points, height = 140, fmt = (v) => v, label, min = 0
   </svg>`;
 }
 
-export function Bars({ items, max, fmt = (v) => v, height = 120, cap }) {
+export function Bars({ items, max, fmt = (v) => v, height = 120, cap, capLabel = 'strop' }) {
   const m = Math.max(1, max ?? Math.max(...items.map((i) => i.v)), (cap || 0) * 1.2);
   const every = items.length > 8 ? Math.ceil(items.length / 6) : 1;
   return html`<div class="bars" style=${`height:${height}px`}>
-    ${cap && html`<div class="bars-cap" style=${`bottom:${(cap / m) * 100}%`}><span>strop</span></div>`}
+    ${cap && html`<div class="bars-cap" style=${`bottom:${(cap / m) * 100}%`}><span>${capLabel}</span></div>`}
     ${items.map((it, idx) => html`<div class="bar-col" title=${`${it.label}: ${fmt(it.v)}`}>
       <div class=${'bar' + (it.hi ? ' hi' : '') + (cap && it.v > cap ? ' over' : '')} style=${`height:${(it.v / m) * 100}%`}></div>
       <span>${(items.length - 1 - idx) % every === 0 ? it.label : ''}</span></div>`)}

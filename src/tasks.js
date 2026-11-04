@@ -93,3 +93,35 @@ export function Backlog({ targetDay }) {
       </div></li>`)}</ul>` : html`<${Empty}>Zásobník je prázdný.</${Empty}>`}`}
   </div>`;
 }
+
+// ---------------- stránka Úkoly ----------------
+import { Page, Chips } from './ui.js';
+import { useStore, all as allRows } from './store.js';
+import { dayBlocks } from './logic.js';
+import { useState as useS } from 'preact/hooks';
+
+export function UkolyPage() {
+  useStore();
+  const td = today(), tm = addDays(td, 1);
+  const [target, setTarget] = useS('today');
+  const tasks = allRows('task');
+  const later = tasks.filter((t) => t.data.day && t.data.day > tm && !t.data.done).sort((a, b) => a.data.day.localeCompare(b.data.day));
+  const done = tasks.filter((t) => t.data.done).sort((a, b) => (b.data.doneAt || '').localeCompare(a.data.doneAt || '')).slice(0, 10);
+  const sec = (title, list, blocks, showDay) => html`<div class="card">
+    <div class="card-h"><h2>${title}</h2><span class="meta">${list.length}</span></div>
+    ${list.length ? html`<ul class="tasks">${list.map((t) => html`<${TaskRow} key=${t.id} t=${t} blocks=${blocks} showDay=${showDay} />`)}</ul>` : html`<p class="hint">Nic.</p>`}
+  </div>`;
+  return html`<${Page} title="Úkoly" sub=${`${tasks.filter((t) => !t.data.done).length} otevřených`}>
+    <div class="card">
+      <${Chips} options=${[{ key: 'today', label: 'Dnes' }, { key: 'tomorrow', label: 'Zítra' }, { key: 'backlog', label: 'Zásobník' }]} value=${target} onChange=${(v) => v && setTarget(v)} />
+      <${QuickAdd} id="uk-add" placeholder="Nový úkol…" onAdd=${(text) => addTask(text, target === 'today' ? td : target === 'tomorrow' ? tm : null)} />
+    </div>
+    <${Overdue} />
+    ${sec('Dnes', tasksFor(td).filter((t) => !t.data.done), dayBlocks(td))}
+    ${sec('Zítra', tasksFor(tm).filter((t) => !t.data.done), dayBlocks(tm))}
+    ${later.length > 0 && sec('Později', later, null, true)}
+    ${sec('Zásobník', backlog(), null)}
+    ${done.length > 0 && html`<div class="card"><div class="card-h"><h2>Nedávno hotové</h2></div>
+      <ul class="tasks">${done.map((t) => html`<${TaskRow} key=${t.id} t=${t} showDay=${true} />`)}</ul></div>`}
+  </${Page}>`;
+}
